@@ -4,6 +4,6 @@ import * as videoService from "./services/video.service.js";
 
 const router = Router();
 
-router.post("/generate-video", authentication(), videoService.generateVideo);
+router.post("/create-video", videoService.createVideo);
 
 export default router;
