@@ -4,6 +4,15 @@ import * as videoService from "./services/video.service.js";
 
 const router = Router();
 
-router.post("/create-video", videoService.createVideo);
+// router.post("/create-video", videoService.createVideo);
+router.post(
+  "/generate-with-user-script",
+  videoService.generateVideoWithUserScript
+);
+router.post(
+  "/generate-with-ai-script",
+  authentication(),
+  videoService.generateVideoWithAIScript
+);
 
 export default router;

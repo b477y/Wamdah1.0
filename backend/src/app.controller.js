@@ -4,11 +4,13 @@ import cors from "cors";
 import videoController from "./modules/video/video.controller.js";
 import voiceController from "./modules/voiceover/voiceover.controller.js";
 import scriptController from "./modules/script/script.controller.js";
+import authController from "./modules/auth/auth.controller.js";
 
 const bootstrap = (app, express) => {
   app.use(express.json());
   app.use(cors({ origin: "*" }));
 
+  app.use("/api/auth", authController);
   app.use("/api/videos", videoController);
   app.use("/api/voices", voiceController);
   app.use("/api/scripts", scriptController);
