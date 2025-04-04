@@ -4,14 +4,13 @@ import {
   fileValidations,
   uploadCloudFile,
 } from "../../utils/multer/cloud.multer.js";
+import authentication from "../../middlewares/authentication.middleware.js";
 
 const router = Router();
 
 router.post(
   "/create-voice-over",
-  uploadCloudFile(fileValidations.audio).fields([
-    { name: "audio", maxCount: 1 },
-  ]),
+  authentication(),
   voiceService.createVoiceOver
 );
 

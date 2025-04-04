@@ -4,9 +4,9 @@ import * as videoService from "./services/video.service.js";
 
 const router = Router();
 
-// router.post("/create-video", videoService.createVideo);
 router.post(
   "/generate-with-user-script",
+  authentication(),
   videoService.generateVideoWithUserScript
 );
 router.post(

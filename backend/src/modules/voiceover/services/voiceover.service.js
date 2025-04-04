@@ -4,25 +4,30 @@ import fs from "fs";
 import msgpack5 from "msgpack5";
 import successResponse from "../../../utils/response/success.response.js";
 import { cloud } from "../../../utils/multer/cloudinary.multer.js";
-
-const API_URL = process.env.VOICE_API_URL;
-const API_KEY = process.env.VOICE_API_KEY;
+import { fileURLToPath } from "url";
+import path from "path";
+import VoiceModel from "../../../db/models/Voice.model.js";
 
 export const createVoiceOver = asyncHandler(async (req, res, next) => {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const API_URL = process.env.VOICE_API_URL;
+  const API_KEY = process.env.VOICE_API_KEY;
+
   const msgpack = msgpack5();
   const {
     title,
-    text,
+    scriptText,
     referenceId = "eef8fc04ed1e4b7eb21323ef58be6008",
     format = "mp3",
   } = req.body;
 
-  if (!text) {
+  if (!scriptText) {
     return next(new Error("Text is required", { cause: 400 }));
   }
 
   const requestData = {
-    text,
+    text: scriptText,
     reference_id: referenceId,
     format,
   };
@@ -38,35 +43,34 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
       responseType: "arraybuffer",
     });
 
-    // Save the audio file locally
-    const outputFilePath = `../../../../output/voices/${Date.now()}.${format}`;
+    const outputDir = path.join(__dirname, "../../../../output/voices");
+
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    const filename = `${Date.now()}.${format}`;
+    const outputFilePath = path.join(outputDir, filename);
     fs.writeFileSync(outputFilePath, response.data);
 
-    try {
-      if (req.files?.images?.length) {
-        const uploadPromises = req.files.images.map((file) =>
-          cloud.uploader.upload(file.path, {
-            folder: `${process.env.APP_NAME}/${req.user._id}/${title}/voice`,
-          })
-        );
+    console.log("Voice file path:", outputFilePath);
 
-        const uploadedImages = await Promise.all(uploadPromises);
-        images = uploadedImages.map(({ secure_url, public_id }) => ({
-          secure_url,
-          public_id,
-        }));
-      }
-    } catch (error) {
-      return res
-        .status(500)
-        .json({ message: "Error uploading files", stack: error.message });
-    }
+    const cloudUploadResult = await cloud.uploader.upload(outputFilePath, {
+      folder: `${process.env.APP_NAME}/${req.user._id}/${title}/voice`,
+      resource_type: "auto",
+    });
+
+    const voice = await VoiceModel.create({
+      createdBy: req.user._id,
+      voiceSource: cloudUploadResult,
+      scriptId: req.body.scriptId,
+    });
 
     return successResponse({
       res,
       status: 201,
       message: "Voiceover created successfully",
-      data: outputFilePath,
+      data: voice,
     });
   } catch (error) {
     console.error("Voiceover Error:", error);
