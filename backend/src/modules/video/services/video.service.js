@@ -6,6 +6,12 @@ import path from "node:path";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, getCompositions } from "@remotion/renderer";
 
+export const generateScript = asyncHandler(async (req, res, next) => {});
+
+export const createVoiceOver = asyncHandler(async (req, res, next) => {
+  
+});
+
 export const createVideo = asyncHandler(async (req, res, next) => {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);

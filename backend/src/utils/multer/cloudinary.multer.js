@@ -1,6 +1,6 @@
 import path from "node:path";
 import * as dotenv from "dotenv";
-dotenv.config({ path: path.resolve("./src/config/.env.dev") });
+dotenv.config({ path: path.resolve("../../config/.env") });
 import cloudinary from "cloudinary";
 
 cloudinary.v2.config({
