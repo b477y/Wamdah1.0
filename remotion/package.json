@@ -3,11 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "vercel-build": "npm install && mkdir -p dist && echo 'Default render' > dist/default.mp4",
     "render": "npx babel-node src/render.js",
-    "vercel-build": "echo 'Skipping build during deployment' && exit 0",
-    "build": "echo 'Dummy build script'",
-    "start": "remotion preview"
+    "start": "remotion preview",
+    "build": "echo 'This runs during local builds'"
   },
   "keywords": [],
   "type": "commonjs",
