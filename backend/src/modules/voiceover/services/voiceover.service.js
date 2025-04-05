@@ -60,6 +60,8 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
       resource_type: "auto",
     });
 
+    fs.unlinkSync(outputFilePath);
+
     const voice = await VoiceModel.create({
       createdBy: req.user._id,
       voiceSource: cloudUploadResult,

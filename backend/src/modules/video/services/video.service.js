@@ -119,6 +119,8 @@ export const generateVideoWithUserScript = asyncHandler(
           resource_type: "auto",
         });
 
+        fs.unlinkSync(outputLocation);
+
         const video = await VideoModel.create({
           createdBy: req.user._id,
           title: req.body.title,
@@ -282,6 +284,8 @@ export const generateVideoWithAIScript = asyncHandler(
               resource_type: "auto",
             }
           );
+
+          fs.unlinkSync(outputLocation);
 
           const video = await VideoModel.create({
             createdBy: req.user._id,
