@@ -1,0 +1,5 @@
+{
+    "name": "Wamdah",
+    "private": true,
+    "workspaces": ["backend", "remotion"]
+  }
