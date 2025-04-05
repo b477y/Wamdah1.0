@@ -4,7 +4,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "render": "npx babel-node src/render.js"
+    "render": "npx babel-node src/render.js",
+    "vercel-build": "echo 'Skipping build during deployment' && exit 0",
+    "build": "echo 'Dummy build script'",
+    "start": "remotion preview"
   },
   "keywords": [],
   "type": "commonjs",
