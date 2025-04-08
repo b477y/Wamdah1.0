@@ -14,12 +14,15 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@remotion/bundler": "^4.0.280",
+    "@remotion/bundler": "^4.0.286",
+    "@remotion/cli": "^4.0.286",
+    "@remotion/fonts": "^4.0.286",
+    "@remotion/google-fonts": "^4.0.286",
     "@remotion/player": "^4.0.280",
-    "@remotion/renderer": "^4.0.280",
+    "@remotion/renderer": "^4.0.286",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "remotion": "^4.0.280"
+    "remotion": "^4.0.286"
   },
   "devDependencies": {
     "@babel/cli": "^7.27.0",

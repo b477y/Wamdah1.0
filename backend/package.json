@@ -11,8 +11,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@remotion/bundler": "^4.0.280",
-    "@remotion/renderer": "^4.0.280",
+    "@remotion/bundler": "^4.0.286",
+    "@remotion/google-fonts": "^4.0.286",
+    "@remotion/renderer": "^4.0.286",
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
     "body-parser": "^2.2.0",
@@ -29,6 +30,6 @@
     "puppeteer": "^24.6.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "remotion": "^4.0.280"
+    "remotion": "^4.0.286"
   }
 }

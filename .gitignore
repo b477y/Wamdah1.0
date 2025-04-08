@@ -5,3 +5,4 @@ backend/node_modules/
 backend/output/
 remotion/package-lock.json
 remotion/node_modules/
+node_modules/

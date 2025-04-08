@@ -9,11 +9,11 @@ const VideoSchema = new mongoose.Schema(
       public_id: { type: String, required: true },
     },
     scriptId: { type: mongoose.Types.ObjectId, ref: "Script", required: true },
-    voiceId: { type: mongoose.Types.ObjectId, ref: "Voice", required: true },
     deletedAt: Date,
   },
   { timestamps: true }
 );
+// voiceId: { type: mongoose.Types.ObjectId, ref: "Voice", required: true },
 
 const VideoModel =
   mongoose.models.Video || mongoose.model("Video", VideoSchema);
