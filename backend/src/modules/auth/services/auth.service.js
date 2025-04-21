@@ -11,20 +11,29 @@ import {
 export const signUp = asyncHandler(async (req, res, next) => {
   const { email } = req.body;
   const user = await UserModel.findOne({
-    filter: { email, deletedAt: { $exists: false } },
+    email,
+    deletedAt: { $exists: false },
   });
 
   if (user) {
     return next(new Error("Email already exists", { cause: 409 }));
   }
 
-  const newUser = await UserModel.create({ ...req.body });
+  const accessTokenSK = process.env.ACCESS_TOKEN_SK;
+  const refreshTokenSK = process.env.REFRESH_TOKEN_SK;
+
+  const tokens = await generateTokens({
+    payload: { _id: newUser._id, role: newUser.role },
+    accessTokenSK,
+    refreshTokenSK,
+    tokenType: [TokenType.ACCESS, TokenType.REFRESH],
+  });
 
   return successResponse({
     res,
     status: 201,
     message: "Account created successfully.",
-    data: newUser,
+    data: { tokens },
   });
 });
 
