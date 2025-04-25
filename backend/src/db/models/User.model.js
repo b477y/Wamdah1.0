@@ -29,6 +29,13 @@ const UserSchema = new mongoose.Schema(
       enum: Object.values(UserRole),
       default: UserRole.USER,
     },
+    googleTokens: {
+      access_token: String,
+      refresh_token: String,
+      scope: String,
+      token_type: String,
+      expiry_date: Number,
+    },
     deletedAt: Date,
   },
   { timestamps: true }
