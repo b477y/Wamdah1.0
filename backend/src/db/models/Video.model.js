@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { AccentsAndDialects, Genders, Languages } from "../../utils/enum/enums.js";
 
 const VideoSchema = new mongoose.Schema(
   {
@@ -9,6 +10,11 @@ const VideoSchema = new mongoose.Schema(
       public_id: { type: String, required: true },
     },
     scriptId: { type: mongoose.Types.ObjectId, ref: "Script", required: true },
+    duration: { type: Number },
+    thumbnailUrl: { type: String },
+    language: { type: String, enum: Object.keys(Languages) },
+    accentOrDialect: { type: String, enum: Object.keys(AccentsAndDialects) },
+    voiceGender: { type: String, enum: Object.keys(Genders), required: false },
     deletedAt: Date,
   },
   { timestamps: true }

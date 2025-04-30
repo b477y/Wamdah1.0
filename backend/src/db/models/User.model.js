@@ -10,7 +10,7 @@ const UserSchema = new mongoose.Schema(
     language: {
       type: String,
       enum: Object.keys(Languages),
-      default: Languages.EN.en,
+      default: Languages.english.en,
     },
     profilePicture: {
       type: {
@@ -36,6 +36,7 @@ const UserSchema = new mongoose.Schema(
       token_type: String,
       expiry_date: Number,
     },
+    aiCredits: { type: Number, default: 100 },
     deletedAt: Date,
   },
   { timestamps: true }

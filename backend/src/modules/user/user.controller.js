@@ -3,6 +3,7 @@ import * as userService from "./services/user.service.js";
 import passport from "passport";
 import jwt from "jsonwebtoken";
 import UserModel from "../../db/models/User.model.js";
+import authentication from "../../middlewares/authentication.middleware.js";
 
 const router = Router();
 
@@ -60,6 +61,25 @@ router.post(
       res.status(500).send("Error publishing video");
     }
   }
+);
+
+router.get("/videos", authentication(), userService.getUserVideos);
+router.get("/recent-videos", authentication(), userService.getRecentVideos);
+router.get("/videos-count", authentication(), userService.getUserVideosCount);
+router.patch(
+  "/rename-video-title",
+  authentication(),
+  userService.renameVideoTitle
+);
+router.get(
+  "/download-video",
+  authentication(),
+  userService.downloadVideo
+);
+router.get(
+  "/ai-credits",
+  authentication(),
+  userService.getAiCredits
 );
 
 export default router;

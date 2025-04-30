@@ -1,4 +1,11 @@
-import { AbsoluteFill, Sequence, Audio, Video, staticFile } from "remotion";
+import {
+  AbsoluteFill,
+  Sequence,
+  Audio,
+  staticFile,
+  Img,
+  Video,
+} from "remotion";
 // Arabic Fonts
 import { loadFont as loadAmiri } from "@remotion/google-fonts/Amiri";
 import { loadFont as loadCairo } from "@remotion/google-fonts/Cairo";
@@ -19,30 +26,30 @@ import { loadFont as loadABeeZee } from "@remotion/google-fonts/ABeeZee";
 import { loadFont as loadLora } from "@remotion/google-fonts/Lora";
 import { loadFont as loadAdventPro } from "@remotion/google-fonts/AdventPro";
 
-// Helper function to detect if text is primarily Arabic
 const isArabicText = (text) => {
-  const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  const arabicPattern =
+    /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
   return arabicPattern.test(text);
 };
 
 const loadFont = (fontFamily) => {
   const fontMap = {
-    "Amiri": loadAmiri,
-    "Cairo": loadCairo,
-    "Tajawal": loadTajawal,
-    "Lateef": loadLateef,
+    Amiri: loadAmiri,
+    Cairo: loadCairo,
+    Tajawal: loadTajawal,
+    Lateef: loadLateef,
     "Reem Kufi": loadReemKufi,
-    "Sofia": loadSofia,
-    "Scheherazade": loadScheherazadeNew,
+    Sofia: loadSofia,
+    Scheherazade: loadScheherazadeNew,
     "Open Sans": loadOpenSans,
-    "Roboto": loadRoboto,
-    "Lato": loadLato,
-    "Poppins": loadPoppins,
-    "Montserrat": loadMontserrat,
-    "Merriweather": loadMerriweather,
+    Roboto: loadRoboto,
+    Lato: loadLato,
+    Poppins: loadPoppins,
+    Montserrat: loadMontserrat,
+    Merriweather: loadMerriweather,
     "Slabo 27px": loadSlabo27px,
-    "ABeeZee": loadABeeZee,
-    "Lora": loadLora,
+    ABeeZee: loadABeeZee,
+    Lora: loadLora,
     "Advent Pro": loadAdventPro,
   };
 
@@ -58,17 +65,30 @@ const MyVideo = ({
   fileName,
 }) => {
   const fontLoader = loadFont(fontFamily);
-  const { fontFamily: selectedFont } = fontLoader ? fontLoader() : { fontFamily: "Arial" };
+  const { fontFamily: selectedFont } = fontLoader
+    ? fontLoader()
+    : { fontFamily: "Arial" };
 
   const sentenceDuration = 120;
   const totalDuration = sentences.length * sentenceDuration;
-  
-  // Adjust the path to go from the Remotion project to backend/videos
+
+  const backgroundImagePaths = [
+    "image1.jpg",
+    "image2.jpg",
+    "image3.jpg",
+    "image4.jpg",
+    "image5.jpg",
+    "image6.jpg",
+    "image7.jpg",
+    "image8.jpg",
+    "image9.jpg",
+    "image10.jpg",
+  ]; // Background images array
   const aiAvatarPath = staticFile(`videos/${fileName}`);
   return (
     <AbsoluteFill style={{ backgroundColor: "white" }}>
       {voiceoverUrl && <Audio src={voiceoverUrl} />}
-    
+
       {/* Avatar Video — rendered once for the full duration */}
       {aiAvatarPath && (
         <Video
@@ -80,10 +100,30 @@ const MyVideo = ({
             width: "100%",
             height: "960px",
             objectFit: "cover",
-            zIndex: 0, // Optional — adjust as needed
+            zIndex: 1, // Optional — adjust as needed
           }}
         />
       )}
+
+      {/* Render Background Images */}
+      {backgroundImagePaths.map((imageName, index) => (
+        <Sequence
+          key={`bg-${index}`}
+          from={index * sentenceDuration}
+          durationInFrames={sentenceDuration}
+        >
+          <Img
+            src={staticFile(`images/${imageName}`)}
+            style={{
+              position: "absolute",
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              zIndex: 0,
+            }}
+          />
+        </Sequence>
+      ))}
 
       {/* Render each sentence one by one */}
       {sentences.map((sentence, index) => {
@@ -104,6 +144,7 @@ const MyVideo = ({
                 justifyContent: "center",
                 alignItems: "flex-start",
                 paddingTop: "300px",
+                zIndex: 2,
               }}
             >
               <h1
@@ -114,6 +155,9 @@ const MyVideo = ({
                   textAlign: "center",
                   direction: isArabic ? "rtl" : "ltr",
                   unicodeBidi: "bidi-override",
+                  backgroundColor: "rgba(0, 0, 0, 0.7)",
+                  padding: "0.2em 0.5em",
+                  borderRadius: "8px",
                 }}
               >
                 {sentence}

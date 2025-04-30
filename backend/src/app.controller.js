@@ -7,6 +7,7 @@ import scriptController from "./modules/script/script.controller.js";
 import authController from "./modules/auth/auth.controller.js";
 import aiAvatarController from "./modules/aiAvatar/aiAvatar.controller.js";
 import userController from "./modules/user/user.controller.js";
+import testingController from "./modules/testing/testing.controller.js";
 import path from "node:path";
 import { fileURLToPath } from "url";
 import passport from "passport";
@@ -43,6 +44,7 @@ const bootstrap = (app, express) => {
   app.use("/api/scripts", scriptController);
   app.use("/api/aiAvatar", aiAvatarController);
   app.use("/api/user", userController);
+  app.use("/api/testing", testingController);
 
   app.get("", (req, res, next) => {
     return res.status(200).json({ message: `${process.env.APP_NAME}` });

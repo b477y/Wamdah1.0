@@ -5,6 +5,7 @@ import axios from "axios";
 import asyncHandler from "../../../utils/response/error.response.js";
 import successResponse from "../../../utils/response/success.response.js";
 import { cloud } from "../../../utils/multer/cloudinary.multer.js";
+const { exec } = await import("node:child_process");
 
 const apiKey = process.env.HEYGIN_API_KEY;
 const generateVideoUrl = "https://api.heygen.com/v2/video/generate";
@@ -52,7 +53,7 @@ export const generateVideo = asyncHandler(async (req, res) => {
         },
         background: {
           type: "color",
-          value: "#FFFFFF",
+          value: "#00FF00",
         },
       },
     ],
@@ -76,6 +77,7 @@ export const generateVideo = asyncHandler(async (req, res) => {
   if (data.error) {
     return res.status(500).json({ message: data.error.message });
   }
+  console.log({ dataValue: data });
 
   const videoId = data.data.video_id;
 
@@ -103,11 +105,15 @@ export const generateVideo = asyncHandler(async (req, res) => {
 
   // Step 3: Download the video
   const videoUrl = statusData.video_url;
-  const fileName = `${speaker}_${Date.now()}.mp4`;
+  const timestamp = Date.now(); // generate once
+  const fileName = `${speaker}_${timestamp}.mp4`;
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  const videosDir = path.resolve(__dirname, "../../../../../remotion/public/videos");
+  const videosDir = path.resolve(
+    __dirname,
+    "../../../../../remotion/public/videos"
+  );
   if (!fs.existsSync(videosDir)) {
     fs.mkdirSync(videosDir, { recursive: true });
   }
@@ -131,23 +137,38 @@ export const generateVideo = asyncHandler(async (req, res) => {
 
   console.log(`Video saved locally at ${outputPath}`);
 
-  // Step 4: Upload to Cloudinary
-  const cloudUploadResult = await cloud.uploader.upload(outputPath, {
-    folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}/ai-avatar-video`,
-    resource_type: "auto",
+  // Step 4: Remove green background and convert to webm format with transparency
+  const outputWebm = path.join(videosDir, `${speaker}_${timestamp}.webm`);
+
+  await new Promise((resolve, reject) => {
+    exec(
+      `ffmpeg -i "${outputPath}" -vf "chromakey=0x00FF00:0.3:0.0" -c:v libvpx -pix_fmt yuva420p -auto-alt-ref 0 "${outputWebm}" -y`,
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error("Error removing background:", stderr);
+          return reject(error);
+        }
+        console.log("Background removed and converted to .webm successfully.");
+        resolve();
+      }
+    );
   });
 
-  // Optional: Remove local file after upload
+  // Step 5: Upload to Cloudinary
+  const cloudUploadResult = await cloud.uploader.upload(outputWebm, {
+    folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}/ai-avatar-video`,
+    resource_type: "video",
+  });
 
   return successResponse({
     res,
     status: 200,
-    message: "Video generated successfully",
+    message: "Video generated and uploaded successfully",
     data: {
       videoSource: {
         public_id: cloudUploadResult.public_id,
         secure_url: cloudUploadResult.secure_url,
-        fileName,
+        fileName: `${speaker}_${timestamp}.webm`,
       },
     },
   });

@@ -6,4 +6,5 @@ backend/output/
 remotion/package-lock.json
 remotion/node_modules/
 remotion/public/videos/
+remotion/public/images/
 node_modules/

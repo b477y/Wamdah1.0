@@ -12,17 +12,20 @@ export const generateScriptWithAi = async (scrapedText) => {
           {
             role: "user",
             content: `
-            Convert this text into a structured, fluid, and conversational script for a short advertisement or voice-over:
-            - Break the content into short, easy-to-read sentences that fit within 3 seconds when spoken.
-            - Use natural, engaging language, as if the host is speaking directly to the audience.
-            - Avoid long sentences, complex phrases, or unnecessary punctuation.
-            - Ensure the script flows naturally and smoothly without line breaks or section titles.
-            - Output should be in plain text, using "." as the only separator for splitting.
-            - End with a clear and actionable sentence that encourages engagement.
-          
-            Here's the text to convert:
+            You are a creative ad copywriter. Create a short, engaging video voice-over script to promote a product using the details below.
+            
+            Rules:
+            - Write short sentences that can each be spoken aloud in 3 seconds.
+            - Use a natural, friendly tone — like a person casually talking to the viewer.
+            - Separate each sentence with a period (.) so they can be split later.
+            - Focus only on the product — ignore any unrelated content (login, signup, footer, etc.).
+            - Don't use headings or bullet points — just one flowing script.
+            - End with a clear call to action like “Get yours now!” or “Try it today!”
+            
+            Product info:
             ${scrapedText}
-          `,
+            `,
+            
           },
         ],
       },

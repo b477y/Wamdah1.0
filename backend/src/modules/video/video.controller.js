@@ -20,9 +20,24 @@ router.post(
   videoService.generateVideoWithAiAvatarAndScript
 );
 router.post(
+  "/generate-vid-with-ai-avatar-2",
+  authentication(),
+  videoService.generateVideoWithAiAvatarAndScriptSecondPart
+);
+router.post(
   "/upload-to-youtube",
   authentication(),
   videoService.uploadToYoutube
+);
+router.post(
+  "/generate-motivational-video",
+  authentication(),
+  videoService.generateMotivationalVideo
+);
+router.post(
+  "/generate-generic-video",
+  authentication(),
+  videoService.generateGenericlVideo
 );
 
 export default router;
