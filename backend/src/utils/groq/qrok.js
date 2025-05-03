@@ -13,7 +13,7 @@ export const generateScriptWithAi = async () => {
             role: "user",
             content: `
             Convert this text into a structured, fluid, and conversational script for a short advertisement or voice-over:
-            - Break the content into short, easy-to-read sentences that fit within 3 seconds when spoken.
+            - Break the content into short, easy-to-read sentences that fit within 2.5 to 3 seconds when spoken.
             - Use natural, engaging language, as if the host is speaking directly to the audience.
             - Avoid long sentences, complex phrases, or unnecessary punctuation.
             - Ensure the script flows naturally and smoothly without line breaks or section titles.

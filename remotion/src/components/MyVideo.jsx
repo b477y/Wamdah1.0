@@ -69,7 +69,7 @@ const MyVideo = ({
     ? fontLoader()
     : { fontFamily: "Arial" };
 
-  const sentenceDuration = 120;
+  const sentenceDuration = 90;
   const totalDuration = sentences.length * sentenceDuration;
 
   const backgroundImagePaths = [
@@ -83,6 +83,11 @@ const MyVideo = ({
     "image8.jpg",
     "image9.jpg",
     "image10.jpg",
+    "image11.jpg",
+    "image12.jpg",
+    "image13.jpg",
+    "image14.jpg",
+    "image15.jpg",
   ]; // Background images array
   const aiAvatarPath = staticFile(`videos/${fileName}`);
   return (
@@ -94,6 +99,7 @@ const MyVideo = ({
         <Video
           src={aiAvatarPath}
           startFrom={0}
+          muted={!!voiceoverUrl}
           style={{
             position: "absolute",
             top: "960px",

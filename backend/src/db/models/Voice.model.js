@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { AccentsAndDialects } from "../../utils/enum/enums.js";
 
 const VoiceSchema = new mongoose.Schema(
   {
@@ -7,6 +8,10 @@ const VoiceSchema = new mongoose.Schema(
     voiceSource: {
       secure_url: { type: String, required: true },
       public_id: { type: String, required: true },
+    },
+    accentOrDialect: {
+      type: String,
+      enum: Object.keys(AccentsAndDialects),
     },
     deletedAt: Date,
   },

@@ -7,7 +7,10 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const downloadDir = path.resolve(__dirname, "../../../../remotion/public/images");
+const downloadDir = path.resolve(
+  __dirname,
+  "../../../../remotion/public/images"
+);
 
 // Retrieve API Key and CSE ID from environment variables
 const apiKey = process.env.CUSTOM_SEARCH_ENGINE_API_KEY;
@@ -33,8 +36,8 @@ const searchImages = async (query) => {
     let successfulDownloads = 0;
     let imageIndex = 0;
 
-    // Keep trying to download images until we have 10 successful ones
-    while (successfulDownloads < 10) {
+    // Keep trying to download images until we have 15 successful ones
+    while (successfulDownloads < 15) {
       // If there are no more images to check in the response, fetch more
       if (imageIndex >= images.length) {
         console.log("Fetching more images...");
@@ -54,7 +57,10 @@ const searchImages = async (query) => {
         continue;
       }
 
-      const imagePath = path.join(downloadDir, `image${successfulDownloads + 1}.jpg`);
+      const imagePath = path.join(
+        downloadDir,
+        `image${successfulDownloads + 1}.jpg`
+      );
 
       try {
         const imageResponse = await axios.get(imageUrl, {
@@ -74,15 +80,21 @@ const searchImages = async (query) => {
 
           downloadedUrls.add(imageUrl);
           successfulDownloads++;
-          console.log(`✅ Downloaded image ${successfulDownloads}: ${imageUrl}`);
+          console.log(
+            `✅ Downloaded image ${successfulDownloads}: ${imageUrl}`
+          );
         } else {
           console.warn(`⚠️ Skipping non-JPG image: ${imageUrl}`);
         }
       } catch (err) {
-        if (err.code === 'ECONNABORTED') {
-          console.warn(`⚠️ Timeout for image ${imageUrl}. Skipping to next image.`);
+        if (err.code === "ECONNABORTED") {
+          console.warn(
+            `⚠️ Timeout for image ${imageUrl}. Skipping to next image.`
+          );
         } else {
-          console.warn(`⚠️ Failed to download ${imageUrl}: ${err.message}. Skipping to next image.`);
+          console.warn(
+            `⚠️ Failed to download ${imageUrl}: ${err.message}. Skipping to next image.`
+          );
         }
       }
 
@@ -93,7 +105,10 @@ const searchImages = async (query) => {
     console.log(`✅ Successfully downloaded ${successfulDownloads} image(s).`);
     return successfulDownloads;
   } catch (error) {
-    console.error("❌ Error fetching or downloading images:", error.message || error);
+    console.error(
+      "❌ Error fetching or downloading images:",
+      error.message || error
+    );
     throw new Error("Failed to fetch or download images.");
   }
 };

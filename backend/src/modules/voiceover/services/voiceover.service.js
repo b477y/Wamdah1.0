@@ -18,7 +18,7 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
   const {
     title,
     scriptText,
-    referenceId = "eef8fc04ed1e4b7eb21323ef58be6008",
+    reference_id,
     format = "mp3",
   } = req.body;
 
@@ -28,7 +28,7 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
 
   const requestData = {
     text: scriptText,
-    reference_id: referenceId,
+    reference_id,
     format,
   };
 

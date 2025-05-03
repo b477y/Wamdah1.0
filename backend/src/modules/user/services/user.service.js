@@ -16,30 +16,6 @@ export const getUserVideos = asyncHandler(async (req, res, next) => {
   });
 });
 
-export const getRecentVideos = asyncHandler(async (req, res, next) => {
-  const videos = await VideoModel.find({ createdBy: req.user._id })
-    .sort({ createdAt: -1 })
-    .limit(3);
-  successResponse({
-    res,
-    status: 200,
-    message: "Last 3 videos retrieved successfully",
-    data: { videos },
-  });
-});
-
-export const getUserVideosCount = asyncHandler(async (req, res, next) => {
-  const videosCount = await VideoModel.find({
-    createdBy: req.user._id,
-  }).countDocuments();
-  successResponse({
-    res,
-    status: 200,
-    message: "Videos count retrieved successfully",
-    data: { videosCount },
-  });
-});
-
 export const renameVideoTitle = asyncHandler(async (req, res, next) => {
   const { videoId, newTitle } = req.body; // the ID in your DB
 
@@ -71,6 +47,60 @@ export const renameVideoTitle = asyncHandler(async (req, res, next) => {
   });
 });
 
+export const getRecentVideos = asyncHandler(async (req, res, next) => {
+  const videos = await VideoModel.find({ createdBy: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(3);
+  successResponse({
+    res,
+    status: 200,
+    message: "Last 3 videos retrieved successfully",
+    data: { videos },
+  });
+});
+
+export const getUserVideosCount = asyncHandler(async (req, res, next) => {
+  const videosCount = await VideoModel.find({
+    createdBy: req.user._id,
+  }).countDocuments();
+  successResponse({
+    res,
+    status: 200,
+    message: "Videos count retrieved successfully",
+    data: { videosCount },
+  });
+});
+
+export const getAiCredits = asyncHandler(async (req, res, next) => {
+  const aiCredits = await UserModel.findById(req.user._id).select("aiCredits");
+
+  successResponse({
+    res,
+    status: 200,
+    message: "Ai credits retrieved successfully",
+    data: { aiCredits },
+  });
+});
+
+export const getUserData = asyncHandler(async (req, res, next) => {
+  const videos = await VideoModel.find({ createdBy: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(3);
+
+  const aiCredits = await UserModel.findById(req.user._id).select("aiCredits");
+
+  const videosCount = await VideoModel.find({
+    createdBy: req.user._id,
+  }).countDocuments();
+
+  successResponse({
+    res,
+    status: 200,
+    message: "User's data retrieved successfully",
+    data: { aiCredits, videosCount, videos },
+  });
+});
+
 export const downloadVideo = asyncHandler(async (req, res, next) => {
   const { videoId } = req.body;
 
@@ -87,15 +117,4 @@ export const downloadVideo = asyncHandler(async (req, res, next) => {
   );
 
   res.redirect(videoUrl);
-});
-
-export const getAiCredits = asyncHandler(async (req, res, next) => {
-  const aiCredits = await UserModel.findById(req.user._id).select("aiCredits");
-
-  successResponse({
-    res,
-    status: 200,
-    message: "Ai credits retrieved successfully",
-    data: { aiCredits },
-  });
 });

@@ -30,14 +30,14 @@ router.post(
   videoService.uploadToYoutube
 );
 router.post(
-  "/generate-motivational-video",
-  authentication(),
-  videoService.generateMotivationalVideo
-);
-router.post(
   "/generate-generic-video",
   authentication(),
   videoService.generateGenericlVideo
+);
+router.post(
+  "/generate",
+  authentication(),
+  videoService.generateVideo
 );
 
 export default router;

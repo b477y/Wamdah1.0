@@ -9,5 +9,10 @@ router.post(
   authentication(),
   aiAvatarService.generateVideo
 );
+router.get(
+  "/listing",
+  authentication(),
+  aiAvatarService.retrieveAiAvatars
+);
 
 export default router;

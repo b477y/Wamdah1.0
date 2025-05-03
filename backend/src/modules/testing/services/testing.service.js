@@ -5,7 +5,6 @@ import axios from "axios";
 
 export const collectImages = asyncHandler(async (req, res, next) => {
   try {
-
     const { query } = req.body;
     const images = await searchImages(query);
 
@@ -22,7 +21,7 @@ export const collectImages = asyncHandler(async (req, res, next) => {
 
 export const generateScriptWithAi = async (req, res, next) => {
   const API_KEY = process.env.GROQ_API_KEY;
-  const { type, userContent } = req.body;
+  const { type, userContent, language, accentOrDialect } = req.body;
 
   const typePrompts = {
     motivational:
@@ -50,6 +49,7 @@ export const generateScriptWithAi = async (req, res, next) => {
           - Ensure the script flows naturally and smoothly, without line breaks or section titles.
           - Output should be plain text with sentences separated by a ".".
           - End with a clear and actionable sentence that encourages engagement.
+          - Script should be in ${accentOrDialect} ${language}
         `;
 
     const response = await axios.post(
@@ -67,6 +67,7 @@ export const generateScriptWithAi = async (req, res, next) => {
         headers: {
           Authorization: `Bearer ${API_KEY}`,
         },
+        timeout: 120000,
       }
     );
 
@@ -80,10 +81,15 @@ export const generateScriptWithAi = async (req, res, next) => {
           {
             role: "user",
             content: `
-                The following is a script for a video:
-                "${generatedScript}"
-                Please extract a meaningful one-word title or keyword that represents the content of this script for a Google image search.
-              `,
+            The following is a video script:
+            
+            "${generatedScript}"
+            
+            Task:
+            1. If the script is in Arabic, translate it to English.
+            2. Identify one single keyword (or at most 2 words) that best represents the central topic of the script.
+            3. Return ONLY that keyword, without any explanation or punctuation.
+            `,
           },
         ],
       },
@@ -91,19 +97,20 @@ export const generateScriptWithAi = async (req, res, next) => {
         headers: {
           Authorization: `Bearer ${API_KEY}`,
         },
+        timeout: 120000,
       }
     );
 
     let title = keywordResponse.data.choices[0].message.content.trim();
     console.log("Extracted Title (One-word Keyword):", title);
 
-    const images = await searchImages(title);
+    await searchImages(title);
 
     successResponse({
       res,
       status: 200,
       message: "Script generated and images fetched successfully",
-      data: { formattedScript: generatedScript, title, images },
+      data: { formattedScript: generatedScript, title },
     });
   } catch (error) {
     console.error("Error generating script:", error);

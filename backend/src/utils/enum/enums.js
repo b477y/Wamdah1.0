@@ -4,20 +4,20 @@ export const Currency = Object.freeze({
 });
 
 export const Languages = Object.freeze({
-  arabic: { en: "AR", ar: "عربي" },
-  english: { en: "EN", ar: "إنجليزي" },
+  arabic: { en: "arabic", ar: "عربي" },
+  english: { en: "english", ar: "إنجليزي" },
 });
 
 export const AccentsAndDialects = Object.freeze({
-  american: { en: "American", ar: "الامريكية" },
-  british: { en: "British", ar: "البريطانية" },
-  egyptian: { en: "Egyptian", ar: "المصرية" },
-  syrian: { en: "Syrian", ar: "السورية" },
+  american: { en: "american", ar: "الامريكية" },
+  british: { en: "british", ar: "البريطانية" },
+  egyptian: { en: "egyptian", ar: "المصرية" },
+  syrian: { en: "syrian", ar: "السورية" },
 });
 
 export const Genders = Object.freeze({
-  female: { en: "Female", ar: "أنثي" },
-  male: { en: "Male", ar: "ذكر" },
+  female: { en: "female", ar: "أنثي" },
+  male: { en: "male", ar: "ذكر" },
 });
 
 export const UserRole = Object.freeze({

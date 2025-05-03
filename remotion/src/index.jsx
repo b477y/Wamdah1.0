@@ -3,7 +3,7 @@ import React from "react";
 import { Composition } from "remotion";
 import MyVideo from "./components/MyVideo.jsx";
 
-const FRAMES_PER_SENTENCE = 120;
+const FRAMES_PER_SENTENCE = 90;
 const DEFAULT_TEXT = "Welcome to Remotion! This is an example. Enjoy your video.";
 
 const sentenceCount = DEFAULT_TEXT.split(/[.?!]\s+/).filter(Boolean).length;

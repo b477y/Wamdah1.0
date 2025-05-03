@@ -71,7 +71,7 @@ router.patch(
   authentication(),
   userService.renameVideoTitle
 );
-router.get(
+router.post(
   "/download-video",
   authentication(),
   userService.downloadVideo
@@ -80,6 +80,11 @@ router.get(
   "/ai-credits",
   authentication(),
   userService.getAiCredits
+);
+router.get(
+  "/data",
+  authentication(),
+  userService.getUserData
 );
 
 export default router;

@@ -23,6 +23,8 @@ export const signUp = asyncHandler(async (req, res, next) => {
   const accessTokenSK = process.env.ACCESS_TOKEN_SK;
   const refreshTokenSK = process.env.REFRESH_TOKEN_SK;
 
+    const newUser = await UserModel.create({ ...req.body });
+
   const tokens = await generateTokens({
     payload: { _id: newUser._id, role: newUser.role },
     accessTokenSK,
