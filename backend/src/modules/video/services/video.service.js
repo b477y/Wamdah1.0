@@ -35,1070 +35,7 @@ import UserModel from "../../../db/models/User.model.js";
 import searchImages from "../../../utils/imagesCollector/imagesCollector.js";
 import { AccentsAndDialects, Languages } from "../../../utils/enum/enums.js";
 
-export const generateVideoWithUserScript = asyncHandler(
-  async (req, res, next) => {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-
-    const indexPath = path.resolve(
-      __dirname,
-      "../../../../../remotion/src/index.jsx"
-    );
-
-    const FRAMES_PER_SENTENCE = 60; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
-
-    console.log("Received scriptText:", req.body.scriptText);
-
-    if (!req.body.scriptText) {
-      return next(
-        new Error("scriptText is missing in the request", { cause: 400 })
-      );
-    }
-
-    // Enhanced sentence splitting with proper Arabic text direction handling
-    const splitText = (text) => {
-      // First, identify if the text is predominantly Arabic
-      const isArabic =
-        /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-          text
-        );
-
-      // Use appropriate regex based on text language
-      let sentences;
-
-      if (isArabic) {
-        // Split at Arabic sentence ending punctuation (question mark, period, exclamation)
-        sentences = text
-          .split(/([.؟!\u06D4]+)/)
-          .reduce((result, current, index, array) => {
-            // Skip empty parts
-            if (!current.trim()) return result;
-
-            // If this is punctuation, append to previous sentence
-            if (/^[.؟!\u06D4]+$/.test(current)) {
-              if (result.length > 0) {
-                result[result.length - 1] += current;
-              } else {
-                result.push(current);
-              }
-            }
-            // If not punctuation and not followed by punctuation, it's a complete sentence
-            else if (
-              index + 1 >= array.length ||
-              !/^[.؟!\u06D4]+$/.test(array[index + 1])
-            ) {
-              result.push(current);
-            }
-            // Otherwise, this part will be joined with punctuation in next iteration
-            else {
-              result.push(current);
-            }
-            return result;
-          }, []);
-      } else {
-        // English and other LTR languages
-        sentences = text
-          .split(/([.?!]+\s*)/)
-          .reduce((result, current, index, array) => {
-            if (!current.trim()) return result;
-
-            // If this part contains ending punctuation
-            if (/[.?!]+\s*$/.test(current)) {
-              result.push(current);
-            }
-            // If next part is punctuation, wait for it
-            else if (
-              index + 1 < array.length &&
-              /^[.?!]+\s*$/.test(array[index + 1])
-            ) {
-              result.push(current);
-            }
-            // Otherwise it's a sentence without punctuation
-            else {
-              result.push(current);
-            }
-            return result;
-          }, []);
-      }
-
-      // Clean up: trim spaces and filter empty strings
-      return sentences
-        .filter((sentence) => sentence.trim().length > 0)
-        .map((sentence) => sentence.trim());
-    };
-
-    // Replace your existing sentence splitting with the new function
-    const sentences = splitText(req.body.scriptText);
-
-    console.log("Sentences to render:", sentences);
-
-    // Evaluate total frames
-    const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
-
-    const fontSize = req.body.fontSize || 80;
-    const color = req.body.color || "white";
-    const fontFamily = req.body.fontFamily || "Arial";
-
-    // Save script in the database
-    const savedScript = await ScriptModel.create({
-      createdBy: req.user._id,
-      content: req.body.scriptText,
-      generatedByAi: false,
-    });
-
-    try {
-      console.log("Generating Voiceover...");
-
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
-      const voiceResponse = await axios.post(
-        `${API_HOST}/api/voices/create-voice-over`,
-        {
-          title: req.body.title,
-          scriptText: req.body.scriptText,
-          scriptId: savedScript._id,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
-      if (
-        !voiceResponse.data ||
-        !voiceResponse.data.data ||
-        !voiceResponse.data.data.voiceSource
-      ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
-      }
-
-      // Passed from the Generate Voice Over Endpoint
-      const voiceoverUrl = voiceResponse.data.data.voiceSource.secure_url || "";
-
-      // Now we proceed with bundling and rendering the video
-      try {
-        console.log(`Bundling project from: ${indexPath}`);
-        const bundled = await bundle(indexPath);
-
-        const compositions = await getCompositions(bundled, {
-          inputProps: { sentences, fontSize, color, fontFamily, voiceoverUrl },
-        });
-
-        const composition = compositions.find((c) => c.id === "MyVideo");
-
-        if (!composition) {
-          throw new Error("Composition 'MyVideo' not found!");
-        }
-
-        console.log("Composition found. Rendering video...");
-
-        const outputLocation = `./output/video-${Date.now()}.mp4`;
-        await renderMedia({
-          composition: {
-            ...composition,
-            durationInFrames: totalFrames,
-          },
-          serveUrl: bundled,
-          codec: "h264",
-          outputLocation,
-          inputProps: { sentences, fontSize, color, fontFamily, voiceoverUrl },
-        });
-
-        console.log("Video rendering completed!");
-
-        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
-          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
-          resource_type: "auto",
-        });
-
-        fs.unlinkSync(outputLocation);
-
-        const video = await VideoModel.create({
-          createdBy: req.user._id,
-          title: req.body.title,
-          videoSource: cloudUploadResult,
-          scriptId: savedScript._id,
-          voiceId: voiceResponse.data.data._id,
-        });
-
-        return successResponse({
-          res,
-          status: 201,
-          message: "Video created successfully",
-          data: { video },
-        });
-      } catch (error) {
-        console.error("Error rendering video:", error);
-        return next(new Error("Failed to render video", { cause: 500 }));
-      }
-    } catch (error) {
-      console.error("Error generating voiceover:", error);
-      return next(new Error("Failed to generate voiceover", { cause: 500 }));
-    }
-  }
-);
-
-export const generateVideoWithAIScript = asyncHandler(
-  async (req, res, next) => {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-
-    const indexPath = path.resolve(
-      __dirname,
-      "../../../../../remotion/src/index.jsx"
-    );
-
-    const FRAMES_PER_SENTENCE = 60; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
-
-    try {
-      console.log("Generating AI script...");
-
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
-
-      // Generate script and add to database
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate-script`,
-        {
-          url: req.body.url,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
-      if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.content
-      ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
-      }
-
-      const scriptText = scriptResponse.data.data.content;
-      console.log("Generated script:", scriptText);
-
-      const sentences = scriptText
-        .split(/[.?!]\s+/)
-        .filter(Boolean)
-        .map((s) => s.trim());
-
-      console.log("Sentences to render:", sentences);
-
-      const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
-
-      const fontSize = req.body.fontSize || 80;
-      const color = req.body.color || "white";
-      const fontFamily = req.body.fontFamily || "Arial";
-
-      function getFontLoader(fontFamily) {
-        const fontMap = {
-          // Arabic Fonts
-          Amiri: loadAmiri,
-          Cairo: loadCairo,
-          Tajawal: loadTajawal,
-          Lateef: loadLateef,
-          "Reem Kufi": loadReemKufi, // Correctly spaced
-          Sofia: loadSofia,
-          Scheherazade: loadScheherazadeNew, // Corrected to match your import
-
-          // English Fonts
-          "Open Sans": loadOpenSans, // Corrected to match the name with space
-          Roboto: loadRoboto,
-          Lato: loadLato,
-          Poppins: loadPoppins,
-          Montserrat: loadMontserrat,
-          Merriweather: loadMerriweather,
-          "Slabo 27px": loadSlabo27px, // Corrected with space
-          ABeeZee: loadABeeZee,
-          Lora: loadLora,
-          "Advent Pro": loadAdventPro,
-        };
-
-        return fontMap[fontFamily];
-      }
-      console.log(fontFamily);
-
-      const fontLoader = getFontLoader(fontFamily);
-      const { fontFamily: selectedFont } = await fontLoader(); // Load selected font
-      console.log(selectedFont);
-
-      // Generating Voiceover
-      // try {
-      // console.log("Generating Voiceover...");
-
-      // const voiceResponse = await axios.post(
-      //   `${API_HOST}/api/voices/create-voice-over`,
-      //   {
-      //     title: req.body.title,
-      //     scriptText: scriptResponse.data.data.content,
-      //     scriptId: scriptResponse.data.data._id,
-      //   },
-      //   {
-      //     headers: {
-      //       Authorization: `${req.headers.authorization}`,
-      //     },
-      //   }
-      // );
-
-      // if (
-      //   !voiceResponse.data ||
-      //   !voiceResponse.data.data ||
-      //   !voiceResponse.data.data.voiceSource
-      // ) {
-      //   throw new Error(
-      //     "Failed to generate voiceover. API returned invalid response."
-      //   );
-      // }
-
-      // Passed from the Generate Voice Over Endpoint
-      // const voiceoverUrl =
-      //   voiceResponse.data.data.voiceSource.secure_url || "";
-
-      // Now we proceed with bundling and rendering the video
-      try {
-        console.log(`Bundling project from: ${indexPath}`);
-        const bundled = await bundle(indexPath);
-
-        const compositions = await getCompositions(bundled, {
-          inputProps: {
-            sentences,
-            fontSize,
-            color,
-            fontFamily,
-            // voiceoverUrl,
-          },
-        });
-
-        const composition = compositions.find((c) => c.id === "MyVideo");
-
-        if (!composition) {
-          throw new Error("Composition 'MyVideo' not found!");
-        }
-
-        console.log("Composition found. Rendering video...");
-
-        const outputLocation = `./output/video-${Date.now()}.mp4`;
-        await renderMedia({
-          composition: {
-            ...composition,
-            durationInFrames: totalFrames,
-          },
-          serveUrl: bundled,
-          codec: "h264",
-          outputLocation,
-          inputProps: {
-            sentences,
-            fontSize,
-            color,
-            fontFamily,
-            // voiceoverUrl,
-          },
-        });
-
-        console.log("Video rendering completed!");
-
-        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
-          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
-          resource_type: "auto",
-        });
-
-        fs.unlinkSync(outputLocation);
-
-        const video = await VideoModel.create({
-          createdBy: req.user._id,
-          title: req.body.title,
-          videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data._id,
-        });
-
-        // voiceId: "67f05a84e84ee0bfa7262a9f",
-        return successResponse({
-          res,
-          status: 201,
-          message: "Video created successfully",
-          data: { video },
-        });
-      } catch (error) {
-        console.error("Error rendering video:", error);
-        return next(new Error("Failed to render video", { cause: 500 }));
-      }
-      // } catch (error) {
-      //   console.error("Error generating voiceover:", error);
-      //   return next(new Error("Failed to generate voiceover", { cause: 500 }));
-      // }
-    } catch (error) {
-      console.error("Error generating AI script:", error);
-      return next(new Error("Failed to generate AI script", { cause: 500 }));
-    }
-  }
-);
-
-// export const generateVideoWithAiAvatarAndScript = asyncHandler(
-//   async (req, res, next) => {
-//     const __filename = fileURLToPath(import.meta.url);
-//     const __dirname = path.dirname(__filename);
-
-//     const indexPath = path.resolve(
-//       __dirname,
-//       "../../../../../remotion/src/index.jsx"
-//     );
-
-//     const FRAMES_PER_SENTENCE = 60; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
-
-//     try {
-//       console.log("Generating AI script...");
-
-//       const API_HOST = process.env.API_HOST || "http://localhost:3000";
-
-//       // Generate script and add to database
-//       const scriptResponse = await axios.post(
-//         `${API_HOST}/api/scripts/generate-script`,
-//         {
-//           url: req.body.url,
-//         },
-//         {
-//           headers: {
-//             Authorization: `${req.headers.authorization}`,
-//           },
-//         }
-//       );
-
-//       if (
-//         !scriptResponse.data ||
-//         !scriptResponse.data.data ||
-//         !scriptResponse.data.data.content
-//       ) {
-//         throw new Error(
-//           "Failed to generate script. API returned invalid response."
-//         );
-//       }
-
-//       const scriptText = scriptResponse.data.data.content;
-//       console.log("Generated script:", scriptText);
-
-//       const sentences = scriptText
-//         .split(/[.?!]\s+/)
-//         .filter(Boolean)
-//         .map((s) => s.trim());
-
-//       console.log("Sentences to render:", sentences);
-
-//       const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
-
-//       const fontSize = req.body.fontSize || 80;
-//       const color = req.body.color || "white";
-//       const fontFamily = req.body.fontFamily || "Arial";
-
-//       function getFontLoader(fontFamily) {
-//         const fontMap = {
-//           // Arabic Fonts
-//           Amiri: loadAmiri,
-//           Cairo: loadCairo,
-//           Tajawal: loadTajawal,
-//           Lateef: loadLateef,
-//           "Reem Kufi": loadReemKufi, // Correctly spaced
-//           Sofia: loadSofia,
-//           Scheherazade: loadScheherazadeNew, // Corrected to match your import
-
-//           // English Fonts
-//           "Open Sans": loadOpenSans, // Corrected to match the name with space
-//           Roboto: loadRoboto,
-//           Lato: loadLato,
-//           Poppins: loadPoppins,
-//           Montserrat: loadMontserrat,
-//           Merriweather: loadMerriweather,
-//           "Slabo 27px": loadSlabo27px, // Corrected with space
-//           ABeeZee: loadABeeZee,
-//           Lora: loadLora,
-//           "Advent Pro": loadAdventPro,
-//         };
-
-//         return fontMap[fontFamily];
-//       }
-//       console.log(fontFamily);
-
-//       const fontLoader = getFontLoader(fontFamily);
-//       const { fontFamily: selectedFont } = await fontLoader(); // Load selected font
-//       console.log(selectedFont);
-
-//       // Generating Voiceover
-//       // try {
-//       // console.log("Generating Voiceover...");
-
-//       // const voiceResponse = await axios.post(
-//       //   `${API_HOST}/api/voices/create-voice-over`,
-//       //   {
-//       //     title: req.body.title,
-//       //     scriptText: scriptResponse.data.data.content,
-//       //     scriptId: scriptResponse.data.data._id,
-//       //   },
-//       //   {
-//       //     headers: {
-//       //       Authorization: `${req.headers.authorization}`,
-//       //     },
-//       //   }
-//       // );
-
-//       // if (
-//       //   !voiceResponse.data ||
-//       //   !voiceResponse.data.data ||
-//       //   !voiceResponse.data.data.voiceSource
-//       // ) {
-//       //   throw new Error(
-//       //     "Failed to generate voiceover. API returned invalid response."
-//       //   );
-//       // }
-
-//       // Passed from the Generate Voice Over Endpoint
-//       // const voiceoverUrl =
-//       //   voiceResponse.data.data.voiceSource.secure_url || "";
-
-//       // Now we proceed with bundling and rendering the video
-//       try {
-//         console.log(`Bundling project from: ${indexPath}`);
-//         const bundled = await bundle(indexPath);
-
-//         const compositions = await getCompositions(bundled, {
-//           inputProps: {
-//             sentences,
-//             fontSize,
-//             color,
-//             fontFamily,
-//             // voiceoverUrl,
-//           },
-//         });
-
-//         const composition = compositions.find((c) => c.id === "MyVideo");
-
-//         if (!composition) {
-//           throw new Error("Composition 'MyVideo' not found!");
-//         }
-
-//         console.log("Composition found. Rendering video...");
-
-//         const outputLocation = `./output/video-${Date.now()}.mp4`;
-//         await renderMedia({
-//           composition: {
-//             ...composition,
-//             durationInFrames: totalFrames,
-//           },
-//           serveUrl: bundled,
-//           codec: "h264",
-//           outputLocation,
-//           inputProps: {
-//             sentences,
-//             fontSize,
-//             color,
-//             fontFamily,
-//             // voiceoverUrl,
-//           },
-//         });
-
-//         console.log("Video rendering completed!");
-
-//         const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
-//           folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
-//           resource_type: "auto",
-//         });
-
-//         fs.unlinkSync(outputLocation);
-
-//         const video = await VideoModel.create({
-//           createdBy: req.user._id,
-//           title: req.body.title,
-//           videoSource: cloudUploadResult,
-//           scriptId: scriptResponse.data.data._id,
-//         });
-
-//         // voiceId: "67f05a84e84ee0bfa7262a9f",
-//         return successResponse({
-//           res,
-//           status: 201,
-//           message: "Video created successfully",
-//           data: { video },
-//         });
-//       } catch (error) {
-//         console.error("Error rendering video:", error);
-//         return next(new Error("Failed to render video", { cause: 500 }));
-//       }
-//       // } catch (error) {
-//       //   console.error("Error generating voiceover:", error);
-//       //   return next(new Error("Failed to generate voiceover", { cause: 500 }));
-//       // }
-//     } catch (error) {
-//       console.error("Error generating AI script:", error);
-//       return next(new Error("Failed to generate AI script", { cause: 500 }));
-//     }
-//   }
-// );
-
-export const generateVideoWithAiAvatarAndScript = asyncHandler(
-  async (req, res, next) => {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-
-    const indexPath = path.resolve(
-      __dirname,
-      "../../../../../remotion/src/index.jsx"
-    );
-
-    const FRAMES_PER_SENTENCE = 120; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
-
-    try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
-      console.log("Generating AI script...");
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate-script`,
-        {
-          url: req.body.url,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
-      if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.content
-      ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
-      }
-
-      const scriptText = scriptResponse.data.data.content;
-
-      console.log("Generated script:", scriptText);
-
-      const aiAvatarResponse = await axios.post(
-        `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
-        {
-          title: req.body.title,
-          speaker: req.body.speaker,
-          script: scriptText,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
-      console.log(aiAvatarResponse.data.data.videoSource.secure_url);
-      console.log(aiAvatarResponse.data.data.videoSource.outputPath);
-
-      const sentences = scriptText
-        .split(/[.?!]\s+/)
-        .filter(Boolean)
-        .map((s) => s.trim());
-
-      console.log("Sentences to render:", sentences);
-
-      const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
-
-      const fontSize = req.body.fontSize || 80;
-      const color = req.body.color || "white";
-      const fontFamily = req.body.fontFamily || "Arial";
-
-      function getFontLoader(fontFamily) {
-        const fontMap = {
-          // Arabic Fonts
-          Amiri: loadAmiri,
-          Cairo: loadCairo,
-          Tajawal: loadTajawal,
-          Lateef: loadLateef,
-          "Reem Kufi": loadReemKufi, // Correctly spaced
-          Sofia: loadSofia,
-          Scheherazade: loadScheherazadeNew, // Corrected to match your import
-
-          // English Fonts
-          "Open Sans": loadOpenSans, // Corrected to match the name with space
-          Roboto: loadRoboto,
-          Lato: loadLato,
-          Poppins: loadPoppins,
-          Montserrat: loadMontserrat,
-          Merriweather: loadMerriweather,
-          "Slabo 27px": loadSlabo27px, // Corrected with space
-          ABeeZee: loadABeeZee,
-          Lora: loadLora,
-          "Advent Pro": loadAdventPro,
-        };
-
-        return fontMap[fontFamily];
-      }
-      console.log(fontFamily);
-
-      const fontLoader = getFontLoader(fontFamily);
-      const { fontFamily: selectedFont } = await fontLoader(); // Load selected font
-      console.log(selectedFont);
-
-      // Generating Voiceover
-      // try {
-      // console.log("Generating Voiceover...");
-
-      // const voiceResponse = await axios.post(
-      //   `${API_HOST}/api/voices/create-voice-over`,
-      //   {
-      //     title: req.body.title,
-      //     scriptText: scriptResponse.data.data.content,
-      //     scriptId: scriptResponse.data.data._id,
-      //   },
-      //   {
-      //     headers: {
-      //       Authorization: `${req.headers.authorization}`,
-      //     },
-      //   }
-      // );
-
-      // if (
-      //   !voiceResponse.data ||
-      //   !voiceResponse.data.data ||
-      //   !voiceResponse.data.data.voiceSource
-      // ) {
-      //   throw new Error(
-      //     "Failed to generate voiceover. API returned invalid response."
-      //   );
-      // }
-
-      // Passed from the Generate Voice Over Endpoint
-      // const voiceoverUrl =
-      //   voiceResponse.data.data.voiceSource.secure_url || "";
-
-      // Now we proceed with bundling and rendering the video
-      try {
-        console.log(`Bundling project from: ${indexPath}`);
-        const bundled = await bundle(indexPath);
-
-        const compositions = await getCompositions(bundled, {
-          inputProps: {
-            sentences,
-            fontSize,
-            color,
-            fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
-          },
-        });
-
-        const composition = compositions.find((c) => c.id === "MyVideo");
-
-        if (!composition) {
-          throw new Error("Composition 'MyVideo' not found!");
-        }
-
-        console.log("Composition found. Rendering video...");
-
-        const outputLocation = `./output/video-${Date.now()}.mp4`;
-
-        await renderMedia({
-          concurrency: 1,
-          timeoutInMilliseconds: 60000, // set to 1 minute
-          composition: {
-            ...composition,
-            durationInFrames: totalFrames,
-          },
-          serveUrl: bundled,
-          codec: "h264",
-          outputLocation,
-          inputProps: {
-            sentences,
-            fontSize,
-            color,
-            fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
-          },
-        });
-
-        console.log("Video rendering completed!");
-
-        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
-          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
-          resource_type: "auto",
-        });
-
-        console.log("Video uploading completed!");
-
-        fs.unlinkSync(outputLocation);
-
-        const video = await VideoModel.create({
-          createdBy: req.user._id,
-          title: req.body.title,
-          videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data._id,
-        });
-
-        console.log("Video data saved in the database!");
-
-        // voiceId: "67f05a84e84ee0bfa7262a9f",
-        return successResponse({
-          res,
-          status: 201,
-          message: "Video created successfully",
-          data: { video },
-        });
-      } catch (error) {
-        console.error("Error rendering video:", error);
-        return next(new Error("Failed to render video", { cause: 500 }));
-      }
-      // } catch (error) {
-      //   console.error("Error generating voiceover:", error);
-      //   return next(new Error("Failed to generate voiceover", { cause: 500 }));
-      // }
-    } catch (error) {
-      console.error("Error generating AI script:", error);
-      return next(new Error("Failed to generate AI script", { cause: 500 }));
-    }
-  }
-);
-
-export const generateVideoWithAiAvatarAndScriptSecondPart = asyncHandler(
-  async (req, res, next) => {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-
-    const indexPath = path.resolve(
-      __dirname,
-      "../../../../../remotion/src/index.jsx"
-    );
-
-    const FRAMES_PER_SENTENCE = 135; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
-
-    try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
-      console.log("Generating AI script...");
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate-script`,
-        {
-          url: req.body.url,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-          timeout: 3600000,
-        }
-      );
-
-      if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.content
-      ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
-      }
-
-      const scriptText = scriptResponse.data.data.content;
-
-      console.log("Generated script:", scriptText);
-
-      await searchImages(req.body.query);
-
-      const aiAvatarResponse = await axios.post(
-        `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
-        {
-          title: req.body.title,
-          speaker: req.body.speaker,
-          script: scriptText,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-          timeout: 3600000,
-        }
-      );
-
-      console.log(aiAvatarResponse.data.data.videoSource.secure_url);
-      console.log(aiAvatarResponse.data.data.videoSource.outputPath);
-      console.log(aiAvatarResponse.data.data.videoSource.fileName);
-
-      const sentences = scriptText
-        .split(/[.?!]\s+/)
-        .filter(Boolean)
-        .map((s) => s.trim());
-
-      console.log("Sentences to render:", sentences);
-
-      const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
-
-      const fontSize = req.body.fontSize || 80;
-      const color = req.body.color || "white";
-      const fontFamily = req.body.fontFamily || "Arial";
-
-      function getFontLoader(fontFamily) {
-        const fontMap = {
-          // Arabic Fonts
-          Amiri: loadAmiri,
-          Cairo: loadCairo,
-          Tajawal: loadTajawal,
-          Lateef: loadLateef,
-          "Reem Kufi": loadReemKufi, // Correctly spaced
-          Sofia: loadSofia,
-          Scheherazade: loadScheherazadeNew, // Corrected to match your import
-
-          // English Fonts
-          "Open Sans": loadOpenSans, // Corrected to match the name with space
-          Roboto: loadRoboto,
-          Lato: loadLato,
-          Poppins: loadPoppins,
-          Montserrat: loadMontserrat,
-          Merriweather: loadMerriweather,
-          "Slabo 27px": loadSlabo27px, // Corrected with space
-          ABeeZee: loadABeeZee,
-          Lora: loadLora,
-          "Advent Pro": loadAdventPro,
-        };
-
-        return fontMap[fontFamily];
-      }
-      console.log(fontFamily);
-
-      const fontLoader = getFontLoader(fontFamily);
-      const { fontFamily: selectedFont } = await fontLoader(); // Load selected font
-      console.log(selectedFont);
-
-      // Generating Voiceover
-      // try {
-      // console.log("Generating Voiceover...");
-
-      // const voiceResponse = await axios.post(
-      //   `${API_HOST}/api/voices/create-voice-over`,
-      //   {
-      //     title: req.body.title,
-      //     scriptText: scriptResponse.data.data.content,
-      //     scriptId: scriptResponse.data.data._id,
-      //   },
-      //   {
-      //     headers: {
-      //       Authorization: `${req.headers.authorization}`,
-      //     },
-      //   }
-      // );
-
-      // if (
-      //   !voiceResponse.data ||
-      //   !voiceResponse.data.data ||
-      //   !voiceResponse.data.data.voiceSource
-      // ) {
-      //   throw new Error(
-      //     "Failed to generate voiceover. API returned invalid response."
-      //   );
-      // }
-
-      // Passed from the Generate Voice Over Endpoint
-      // const voiceoverUrl =
-      //   voiceResponse.data.data.voiceSource.secure_url || "";
-
-      // Now we proceed with bundling and rendering the video
-      try {
-        console.log(`Bundling project from: ${indexPath}`);
-        const bundled = await bundle(indexPath);
-
-        const compositions = await getCompositions(bundled, {
-          inputProps: {
-            sentences,
-            fontSize,
-            color,
-            fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
-            // images,
-          },
-        });
-
-        const composition = compositions.find((c) => c.id === "MyVideo");
-
-        if (!composition) {
-          throw new Error("Composition 'MyVideo' not found!");
-        }
-
-        console.log("Composition found. Rendering video...");
-
-        const outputLocation = `./output/video-${Date.now()}.mp4`;
-
-        await renderMedia({
-          concurrency: 1,
-          timeoutInMilliseconds: 60000, // set to 1 minute
-          composition: {
-            ...composition,
-            durationInFrames: totalFrames,
-          },
-          serveUrl: bundled,
-          codec: "h264",
-          outputLocation,
-          inputProps: {
-            sentences,
-            fontSize,
-            color,
-            fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
-            // images,
-          },
-        });
-
-        console.log("Video rendering completed!");
-
-        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
-          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
-          resource_type: "auto",
-        });
-
-        const durationInSeconds = Math.round(cloudUploadResult.duration);
-
-        console.log("Video uploading completed!");
-
-        fs.unlinkSync(outputLocation);
-
-        const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
-          resource_type: "video",
-          transformation: [
-            { width: 500, height: 281, crop: "fill" },
-            { start_offset: "5" },
-          ],
-        });
-
-        const video = await VideoModel.create({
-          createdBy: req.user._id,
-          title: req.body.title,
-          videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data._id,
-          duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
-        });
-
-        console.log("Video data saved in the database!");
-
-        // voiceId: "67f05a84e84ee0bfa7262a9f",
-        return successResponse({
-          res,
-          status: 201,
-          message: "Video created successfully",
-          data: { video },
-        });
-      } catch (error) {
-        console.error("Error rendering video:", error);
-        return next(new Error("Failed to render video", { cause: 500 }));
-      }
-      // } catch (error) {
-      //   console.error("Error generating voiceover:", error);
-      //   return next(new Error("Failed to generate voiceover", { cause: 500 }));
-      // }
-    } catch (error) {
-      console.error("Error generating AI script:", error);
-      return next(new Error("Failed to generate AI script", { cause: 500 }));
-    }
-  }
-);
-
+// Instant video
 export const generateVideo = asyncHandler(async (req, res, next) => {
   const { userPrompt, type, language, accentOrDialect, speaker } = req.body;
   let reference_id; // voice over actor id
@@ -1150,69 +87,55 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
       console.log("Formatted script:", script);
 
       try {
-      //   switch (accentOrDialect.toLowerCase()) {
-      //     case AccentsAndDialects.egyptian.en:
-      //       reference_id = "eef8fc04ed1e4b7eb21323ef58be6008";
-      //       break;
+        switch (accentOrDialect.toLowerCase()) {
+          case AccentsAndDialects.egyptian.en:
+            // reference_id = "eef8fc04ed1e4b7eb21323ef58be6008"; // maged
+            reference_id = "e82e453034a84376a14bb8438fafe9a3"; // elda7i7
+            break;
 
-      //     case AccentsAndDialects.syrian.en:
-      //       reference_id = "27c3d5e27b664b1cb692699a661ed91a";
-      //       break;
+          case AccentsAndDialects.syrian.en:
+            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
+            break;
 
-      //     default:
-      //       break;
-      //   }
+          default:
+            break;
+        }
 
-      //   console.log("Generating Voiceover...");
+        console.log("Generating Voiceover...");
 
-      //   const voiceResponse = await axios.post(
-      //     `${API_HOST}/api/voices/create-voice-over`,
-      //     {
-      //       title,
-      //       scriptText: script,
-      //       scriptId: scriptResponse.data.data.script._id,
-      //       reference_id,
-      //     },
-      //     {
-      //       headers: {
-      //         Authorization: `${req.headers.authorization}`,
-      //       },
-      //     }
-      //   );
-
-      //   if (
-      //     !voiceResponse.data ||
-      //     !voiceResponse.data.data ||
-      //     !voiceResponse.data.data.voiceSource
-      //   ) {
-      //     throw new Error(
-      //       "Failed to generate voiceover. API returned invalid response."
-      //     );
-      //   }
-
-      //   const voiceoverUrl =
-      //     voiceResponse.data.data.voiceSource.secure_url || null;
-
-      //   console.log("Voiceover URL:", voiceoverUrl);
-
-        const aiAvatarResponse = await axios.post(
-          `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
+        const voiceResponse = await axios.post(
+          `${API_HOST}/api/voices/create-voice-over`,
           {
             title,
-            speaker,
-            script,
+            scriptText: script,
+            scriptId: scriptResponse.data.data.script._id,
+            language,
+            accentOrDialect,
+            reference_id,
           },
           {
             headers: {
               Authorization: `${req.headers.authorization}`,
             },
-            timeout: 3600000,
           }
         );
 
-        console.log(aiAvatarResponse.data.data.videoSource.secure_url);
-        console.log(aiAvatarResponse.data.data.videoSource.outputPath);
-        console.log(aiAvatarResponse.data.data.videoSource.fileName);
+        if (
+          !voiceResponse.data ||
+          !voiceResponse.data.data ||
+          !voiceResponse.data.data.voiceSource
+        ) {
+          next(
+            new Error(
+              "Failed to generate voiceover. API returned invalid response."
+            )
+          );
+        }
+
+        const voiceoverUrl =
+          voiceResponse.data.data.voiceSource.secure_url || null;
+
+        console.log("Voiceover URL:", voiceoverUrl);
 
         // Enhanced sentence splitting with proper Arabic text direction handling
         const splitText = (text) => {
@@ -1338,15 +261,14 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
-            // voiceoverUrl,
+            voiceoverUrl,
           },
         });
 
         const composition = compositions.find((c) => c.id === "MyVideo");
 
         if (!composition) {
-          throw new Error("Composition 'MyVideo' not found!");
+          next(new Error("Composition 'MyVideo' not found!"));
         }
 
         console.log("Composition found. Rendering video...");
@@ -1368,8 +290,7 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
-            // voiceoverUrl,
+            voiceoverUrl,
           },
         });
 
@@ -1401,6 +322,9 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
           scriptId: scriptResponse.data.data.script._id,
           duration: durationInSeconds,
           thumbnailUrl: thumbnailUrl,
+          language,
+          accentOrDialect,
+          voiceId: voiceResponse.data.data.voice._id,
         });
 
         console.log("Video data saved in the database!");
@@ -1480,6 +404,8 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             title,
             scriptText: script,
             scriptId: scriptResponse.data.data.script._id,
+            language,
+            accentOrDialect,
             reference_id,
           },
           {
@@ -1690,6 +616,9 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
           scriptId: scriptResponse.data.data.script._id,
           duration: durationInSeconds,
           thumbnailUrl: thumbnailUrl,
+          language,
+          accentOrDialect,
+          voiceId: voiceResponse.data.data.voice._id,
         });
 
         console.log("Video data saved in the database!");
@@ -1713,68 +642,1135 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
   res.status(500).json({ error: "Video generation failed." });
 });
 
-export const generateGenericlVideo = asyncHandler(async (req, res, next) => {
-  const { language, accentOrDialect, type, userContent, gender } = req.body;
+// AI Spoke person
+export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
+  const { userPrompt, type, language, accentOrDialect, speaker } = req.body;
+  let reference_id; // voice over actor id
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
+  const indexPath = path.resolve(
+    __dirname,
+    "../../../../../remotion/src/index.jsx"
+  );
+
+  const FRAMES_PER_SENTENCE = 90; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
+
+  // Arabic video
+  if (language.toLowerCase() === Languages.arabic.en) {
+    try {
+      const API_HOST = process.env.API_HOST || "http://localhost:3000";
+      console.log("Generating Script...");
+
+      const scriptResponse = await axios.post(
+        `${API_HOST}/api/scripts/generate`,
+        {
+          type,
+          userPrompt,
+          language,
+          accentOrDialect,
+        },
+        {
+          headers: {
+            Authorization: `${req.headers.authorization}`,
+          },
+        }
+      );
+
+      if (
+        !scriptResponse.data ||
+        !scriptResponse.data.data ||
+        !scriptResponse.data.data.formattedScript ||
+        !scriptResponse.data.data.title
+      ) {
+        throw new Error(
+          "Failed to generate script. API returned invalid response."
+        );
+      }
+
+      const script = scriptResponse.data.data.formattedScript || "";
+      const title = scriptResponse.data.data.title || "";
+
+      console.log("Formatted script:", script);
+
+      try {
+        const aiAvatarResponse = await axios.post(
+          `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
+          {
+            title,
+            speaker,
+            script,
+          },
+          {
+            headers: {
+              Authorization: `${req.headers.authorization}`,
+            },
+            timeout: 3600000,
+          }
+        );
+
+        console.log(aiAvatarResponse.data.data.videoSource.secure_url);
+        console.log(aiAvatarResponse.data.data.videoSource.outputPath);
+        console.log(aiAvatarResponse.data.data.videoSource.fileName);
+
+        // Enhanced sentence splitting with proper Arabic text direction handling
+        const splitText = (text) => {
+          // First, identify if the text is predominantly Arabic
+          const isArabic =
+            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+              text
+            );
+
+          // Use appropriate regex based on text language
+          let sentences;
+
+          if (isArabic) {
+            // Split at Arabic sentence ending punctuation (question mark, period, exclamation)
+            sentences = text
+              .split(/([.؟!\u06D4]+)/)
+              .reduce((result, current, index, array) => {
+                // Skip empty parts
+                if (!current.trim()) return result;
+
+                // If this is punctuation, append to previous sentence
+                if (/^[.؟!\u06D4]+$/.test(current)) {
+                  if (result.length > 0) {
+                    result[result.length - 1] += current;
+                  } else {
+                    result.push(current);
+                  }
+                }
+                // If not punctuation and not followed by punctuation, it's a complete sentence
+                else if (
+                  index + 1 >= array.length ||
+                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                }
+                // Otherwise, this part will be joined with punctuation in next iteration
+                else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          } else {
+            // English and other LTR languages
+            sentences = text
+              .split(/([.?!]+\s*)/)
+              .reduce((result, current, index, array) => {
+                if (!current.trim()) return result;
+
+                // If this part contains ending punctuation
+                if (/[.?!]+\s*$/.test(current)) {
+                  result.push(current);
+                }
+                // If next part is punctuation, wait for it
+                else if (
+                  index + 1 < array.length &&
+                  /^[.?!]+\s*$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                }
+                // Otherwise it's a sentence without punctuation
+                else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          }
+
+          // Clean up: trim spaces and filter empty strings
+          return sentences
+            .filter((sentence) => sentence.trim().length > 0)
+            .map((sentence) => sentence.trim());
+        };
+
+        // Replace your existing sentence splitting with the new function
+        const sentences = splitText(script);
+
+        console.log("Sentences to render:", sentences);
+
+        const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
+
+        const fontSize = req.body.fontSize || 80;
+        const color = req.body.color || "white";
+        const fontFamily = req.body.fontFamily || "Cairo";
+
+        function getFontLoader(fontFamily) {
+          const fontMap = {
+            // Arabic Fonts
+            Amiri: loadAmiri,
+            Cairo: loadCairo,
+            Tajawal: loadTajawal,
+            Lateef: loadLateef,
+            "Reem Kufi": loadReemKufi, // Correctly spaced
+            Sofia: loadSofia,
+            Scheherazade: loadScheherazadeNew, // Corrected to match your import
+
+            // English Fonts
+            "Open Sans": loadOpenSans, // Corrected to match the name with space
+            Roboto: loadRoboto,
+            Lato: loadLato,
+            Poppins: loadPoppins,
+            Montserrat: loadMontserrat,
+            Merriweather: loadMerriweather,
+            "Slabo 27px": loadSlabo27px, // Corrected with space
+            ABeeZee: loadABeeZee,
+            Lora: loadLora,
+            "Advent Pro": loadAdventPro,
+          };
+
+          return fontMap[fontFamily];
+        }
+        console.log(fontFamily);
+
+        const fontLoader = getFontLoader(fontFamily);
+        const { fontFamily: selectedFont } = await fontLoader(); // Load selected font
+        console.log(selectedFont);
+
+        console.log(`Bundling project from: ${indexPath}`);
+        const bundled = await bundle(indexPath);
+
+        const compositions = await getCompositions(bundled, {
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+          },
+        });
+
+        const composition = compositions.find((c) => c.id === "MyVideo");
+
+        if (!composition) {
+          throw new Error("Composition 'MyVideo' not found!");
+        }
+
+        console.log("Composition found. Rendering video...");
+
+        const outputLocation = `./output/video-${Date.now()}.mp4`;
+
+        await renderMedia({
+          concurrency: 1,
+          timeoutInMilliseconds: 60000, // set to 1 minute
+          composition: {
+            ...composition,
+            durationInFrames: totalFrames,
+          },
+          serveUrl: bundled,
+          codec: "h264",
+          outputLocation,
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+          },
+        });
+
+        console.log("Video rendering completed!");
+
+        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
+          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
+          resource_type: "auto",
+        });
+
+        const durationInSeconds = Math.round(cloudUploadResult.duration);
+
+        console.log("Video uploading completed!");
+
+        fs.unlinkSync(outputLocation);
+
+        const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
+          resource_type: "video",
+          transformation: [
+            { width: 500, height: 281, crop: "fill" },
+            { start_offset: "15" },
+          ],
+        });
+
+        const video = await VideoModel.create({
+          createdBy: req.user._id,
+          title,
+          videoSource: cloudUploadResult,
+          scriptId: scriptResponse.data.data.script._id,
+          duration: durationInSeconds,
+          thumbnailUrl: thumbnailUrl,
+          language,
+          accentOrDialect,
+        });
+
+        console.log("Video data saved in the database!");
+
+        return successResponse({
+          res,
+          status: 201,
+          message: "Video created successfully",
+          data: { video },
+        });
+      } catch (error) {
+        console.error("Error generating video:", error);
+        res.status(500).json({ error: "Video generation failed." });
+      }
+    } catch (error) {
+      console.error("Error generating voiceover:", error);
+      res.status(500).json({ error: "Voiceover generation failed." });
+    }
+  }
+
+  // English video
+  if (language.toLowerCase() === Languages.english.en) {
+    try {
+      const API_HOST = process.env.API_HOST || "http://localhost:3000";
+      console.log("Generating Script...");
+
+      const scriptResponse = await axios.post(
+        `${API_HOST}/api/scripts/generate`,
+        {
+          type,
+          userPrompt,
+          language,
+          accentOrDialect,
+        },
+        {
+          headers: {
+            Authorization: `${req.headers.authorization}`,
+          },
+        }
+      );
+
+      if (
+        !scriptResponse.data ||
+        !scriptResponse.data.data ||
+        !scriptResponse.data.data.formattedScript ||
+        !scriptResponse.data.data.title
+      ) {
+        throw new Error(
+          "Failed to generate script. API returned invalid response."
+        );
+      }
+
+      const script = scriptResponse.data.data.formattedScript || "";
+      const title = scriptResponse.data.data.title || "";
+
+      console.log("Formatted script:", script);
+
+      try {
+        switch (accentOrDialect.toLowerCase()) {
+          case AccentsAndDialects.egyptian.en:
+            reference_id = "eef8fc04ed1e4b7eb21323ef58be6008";
+            break;
+
+          case AccentsAndDialects.syrian.en:
+            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
+            break;
+
+          default:
+            break;
+        }
+
+        console.log("Generating Voiceover...");
+
+        const voiceoverUrl =
+          voiceResponse.data.data.voiceSource.secure_url || null;
+
+        console.log("Voiceover URL:", voiceoverUrl);
+
+        const aiAvatarResponse = await axios.post(
+          `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
+          {
+            title,
+            speaker,
+            script,
+          },
+          {
+            headers: {
+              Authorization: `${req.headers.authorization}`,
+            },
+            timeout: 3600000,
+          }
+        );
+
+        console.log(aiAvatarResponse.data.data.videoSource.secure_url);
+        console.log(aiAvatarResponse.data.data.videoSource.outputPath);
+        console.log(aiAvatarResponse.data.data.videoSource.fileName);
+
+        const splitText = (text) => {
+          const isArabic =
+            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+              text
+            );
+
+          let sentences;
+
+          if (isArabic) {
+            sentences = text
+              .split(/([.؟!\u06D4]+)/)
+              .reduce((result, current, index, array) => {
+                if (!current.trim()) return result;
+
+                if (/^[.؟!\u06D4]+$/.test(current)) {
+                  if (result.length > 0) {
+                    result[result.length - 1] += current;
+                  } else {
+                    result.push(current);
+                  }
+                } else if (
+                  index + 1 >= array.length ||
+                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                } else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          } else {
+            sentences = text
+              .split(/([.?!]+\s*)/)
+              .reduce((result, current, index, array) => {
+                if (!current.trim()) return result;
+
+                if (/[.?!]+\s*$/.test(current)) {
+                  result.push(current);
+                } else if (
+                  index + 1 < array.length &&
+                  /^[.?!]+\s*$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                } else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          }
+
+          return sentences
+            .filter((sentence) => sentence.trim().length > 0)
+            .map((sentence) => sentence.trim());
+        };
+
+        const sentences = splitText(script);
+
+        console.log("Sentences to render:", sentences);
+
+        const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
+
+        const fontSize = req.body.fontSize || 80;
+        const color = req.body.color || "white";
+        const fontFamily = req.body.fontFamily || "Cairo";
+
+        function getFontLoader(fontFamily) {
+          const fontMap = {
+            // Arabic Fonts
+            Amiri: loadAmiri,
+            Cairo: loadCairo,
+            Tajawal: loadTajawal,
+            Lateef: loadLateef,
+            "Reem Kufi": loadReemKufi,
+            Sofia: loadSofia,
+            Scheherazade: loadScheherazadeNew,
+
+            // English Fonts
+            "Open Sans": loadOpenSans,
+            Roboto: loadRoboto,
+            Lato: loadLato,
+            Poppins: loadPoppins,
+            Montserrat: loadMontserrat,
+            Merriweather: loadMerriweather,
+            "Slabo 27px": loadSlabo27px,
+            ABeeZee: loadABeeZee,
+            Lora: loadLora,
+            "Advent Pro": loadAdventPro,
+          };
+
+          return fontMap[fontFamily];
+        }
+        console.log(fontFamily);
+
+        const fontLoader = getFontLoader(fontFamily);
+        const { fontFamily: selectedFont } = await fontLoader();
+        console.log(selectedFont);
+
+        console.log(`Bundling project from: ${indexPath}`);
+        const bundled = await bundle(indexPath);
+
+        const compositions = await getCompositions(bundled, {
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+          },
+        });
+
+        const composition = compositions.find((c) => c.id === "MyVideo");
+
+        if (!composition) {
+          throw new Error("Composition 'MyVideo' not found!");
+        }
+
+        console.log("Composition found. Rendering video...");
+
+        const outputLocation = `./output/video-${Date.now()}.mp4`;
+
+        await renderMedia({
+          concurrency: 1,
+          timeoutInMilliseconds: 60000, // set to 1 minute
+          composition: {
+            ...composition,
+            durationInFrames: totalFrames,
+          },
+          serveUrl: bundled,
+          codec: "h264",
+          outputLocation,
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+          },
+        });
+
+        console.log("Video rendering completed!");
+
+        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
+          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
+          resource_type: "auto",
+        });
+
+        const durationInSeconds = Math.round(cloudUploadResult.duration);
+
+        console.log("Video uploading completed!");
+
+        fs.unlinkSync(outputLocation);
+
+        const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
+          resource_type: "video",
+          transformation: [
+            { width: 500, height: 281, crop: "fill" },
+            { start_offset: "15" },
+          ],
+        });
+
+        const video = await VideoModel.create({
+          createdBy: req.user._id,
+          title,
+          videoSource: cloudUploadResult,
+          scriptId: scriptResponse.data.data.script._id,
+          duration: durationInSeconds,
+          thumbnailUrl: thumbnailUrl,
+          language,
+          accentOrDialect,
+        });
+
+        console.log("Video data saved in the database!");
+
+        return successResponse({
+          res,
+          status: 201,
+          message: "Video created successfully",
+          data: { video },
+        });
+      } catch (error) {
+        console.error("Error generating video:", error);
+        res.status(500).json({ error: "Video generation failed." });
+      }
+    } catch (error) {
+      console.error("Error generating voiceover:", error);
+      res.status(500).json({ error: "Voiceover generation failed." });
+    }
+  }
+
+  res.status(500).json({ error: "Video generation failed." });
 });
 
-export const uploadToYoutube = asyncHandler(async (req, res, next) => {
-  try {
-    // Retrieve the access token for the user from the database
-    const user = await UserModel.findById(req.user._id); // assuming `req.user` contains the user's info
-    const accessToken = user.googleTokens.access_token;
+// Ad video
+export const generateAdVideo = asyncHandler(async (req, res, next) => {
+  const { url, language, accentOrDialect } = req.body;
+  let reference_id; // voice over actor id
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
 
-    if (!accessToken) {
-      return res.status(400).json({ message: "Access token not found" });
+  const indexPath = path.resolve(
+    __dirname,
+    "../../../../../remotion/src/index.jsx"
+  );
+
+  const FRAMES_PER_SENTENCE = 90; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
+
+  // Arabic video
+  if (language.toLowerCase() === Languages.arabic.en) {
+    try {
+      const API_HOST = process.env.API_HOST || "http://localhost:3000";
+      console.log("Generating Script...");
+
+      const scriptResponse = await axios.post(
+        `${API_HOST}/api/scripts/generate-ad-script`,
+        {
+          url,
+          language,
+        },
+        {
+          headers: {
+            Authorization: `${req.headers.authorization}`,
+          },
+        }
+      );
+
+      if (
+        !scriptResponse.data ||
+        !scriptResponse.data.data ||
+        !scriptResponse.data.data.script ||
+        !scriptResponse.data.data.scriptId ||
+        !scriptResponse.data.data.title
+      ) {
+        throw new Error(
+          "Failed to generate script. API returned invalid response."
+        );
+      }
+
+      const script = scriptResponse.data.data.script || "";
+      const scriptId = scriptResponse.data.data.scriptId || "";
+      const title = scriptResponse.data.data.title || "";
+
+      console.log("Formatted script:", script);
+
+      try {
+        switch (accentOrDialect.toLowerCase()) {
+          case AccentsAndDialects.egyptian.en:
+            // reference_id = "eef8fc04ed1e4b7eb21323ef58be6008"; // maged
+            reference_id = "e82e453034a84376a14bb8438fafe9a3"; // elda7i7
+            break;
+
+          case AccentsAndDialects.syrian.en:
+            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
+            break;
+
+          default:
+            break;
+        }
+
+        console.log("Generating Voiceover...");
+
+        const voiceResponse = await axios.post(
+          `${API_HOST}/api/voices/create-voice-over`,
+          {
+            title,
+            scriptText: script,
+            scriptId,
+            language,
+            accentOrDialect,
+            reference_id,
+          },
+          {
+            headers: {
+              Authorization: `${req.headers.authorization}`,
+            },
+          }
+        );
+
+        if (
+          !voiceResponse.data ||
+          !voiceResponse.data.data ||
+          !voiceResponse.data.data.voiceSource
+        ) {
+          next(
+            new Error(
+              "Failed to generate voiceover. API returned invalid response."
+            )
+          );
+        }
+
+        const voiceoverUrl =
+          voiceResponse.data.data.voiceSource.secure_url || null;
+
+        console.log("Voiceover URL:", voiceoverUrl);
+
+        // Enhanced sentence splitting with proper Arabic text direction handling
+        const splitText = (text) => {
+          // First, identify if the text is predominantly Arabic
+          const isArabic =
+            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+              text
+            );
+
+          // Use appropriate regex based on text language
+          let sentences;
+
+          if (isArabic) {
+            // Split at Arabic sentence ending punctuation (question mark, period, exclamation)
+            sentences = text
+              .split(/([.؟!\u06D4]+)/)
+              .reduce((result, current, index, array) => {
+                // Skip empty parts
+                if (!current.trim()) return result;
+
+                // If this is punctuation, append to previous sentence
+                if (/^[.؟!\u06D4]+$/.test(current)) {
+                  if (result.length > 0) {
+                    result[result.length - 1] += current;
+                  } else {
+                    result.push(current);
+                  }
+                }
+                // If not punctuation and not followed by punctuation, it's a complete sentence
+                else if (
+                  index + 1 >= array.length ||
+                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                }
+                // Otherwise, this part will be joined with punctuation in next iteration
+                else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          } else {
+            // English and other LTR languages
+            sentences = text
+              .split(/([.?!]+\s*)/)
+              .reduce((result, current, index, array) => {
+                if (!current.trim()) return result;
+
+                // If this part contains ending punctuation
+                if (/[.?!]+\s*$/.test(current)) {
+                  result.push(current);
+                }
+                // If next part is punctuation, wait for it
+                else if (
+                  index + 1 < array.length &&
+                  /^[.?!]+\s*$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                }
+                // Otherwise it's a sentence without punctuation
+                else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          }
+
+          // Clean up: trim spaces and filter empty strings
+          return sentences
+            .filter((sentence) => sentence.trim().length > 0)
+            .map((sentence) => sentence.trim());
+        };
+
+        // Replace your existing sentence splitting with the new function
+        const sentences = splitText(script);
+
+        console.log("Sentences to render:", sentences);
+
+        const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
+
+        const fontSize = req.body.fontSize || 80;
+        const color = req.body.color || "white";
+        const fontFamily = req.body.fontFamily || "Cairo";
+
+        function getFontLoader(fontFamily) {
+          const fontMap = {
+            // Arabic Fonts
+            Amiri: loadAmiri,
+            Cairo: loadCairo,
+            Tajawal: loadTajawal,
+            Lateef: loadLateef,
+            "Reem Kufi": loadReemKufi, // Correctly spaced
+            Sofia: loadSofia,
+            Scheherazade: loadScheherazadeNew, // Corrected to match your import
+
+            // English Fonts
+            "Open Sans": loadOpenSans, // Corrected to match the name with space
+            Roboto: loadRoboto,
+            Lato: loadLato,
+            Poppins: loadPoppins,
+            Montserrat: loadMontserrat,
+            Merriweather: loadMerriweather,
+            "Slabo 27px": loadSlabo27px, // Corrected with space
+            ABeeZee: loadABeeZee,
+            Lora: loadLora,
+            "Advent Pro": loadAdventPro,
+          };
+
+          return fontMap[fontFamily];
+        }
+        console.log(fontFamily);
+
+        const fontLoader = getFontLoader(fontFamily);
+        const { fontFamily: selectedFont } = await fontLoader(); // Load selected font
+        console.log(selectedFont);
+
+        console.log(`Bundling project from: ${indexPath}`);
+        const bundled = await bundle(indexPath);
+
+        const compositions = await getCompositions(bundled, {
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            voiceoverUrl,
+          },
+        });
+
+        const composition = compositions.find((c) => c.id === "MyVideo");
+
+        if (!composition) {
+          next(new Error("Composition 'MyVideo' not found!"));
+        }
+
+        console.log("Composition found. Rendering video...");
+
+        const outputLocation = `./output/video-${Date.now()}.mp4`;
+
+        await renderMedia({
+          concurrency: 1,
+          timeoutInMilliseconds: 60000, // set to 1 minute
+          composition: {
+            ...composition,
+            durationInFrames: totalFrames,
+          },
+          serveUrl: bundled,
+          codec: "h264",
+          outputLocation,
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            voiceoverUrl,
+          },
+        });
+
+        console.log("Video rendering completed!");
+
+        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
+          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
+          resource_type: "auto",
+        });
+
+        const durationInSeconds = Math.round(cloudUploadResult.duration);
+
+        console.log("Video uploading completed!");
+
+        fs.unlinkSync(outputLocation);
+
+        const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
+          resource_type: "video",
+          transformation: [
+            { width: 500, height: 281, crop: "fill" },
+            { start_offset: "15" },
+          ],
+        });
+
+        const video = await VideoModel.create({
+          createdBy: req.user._id,
+          title,
+          videoSource: cloudUploadResult,
+          scriptId,
+          duration: durationInSeconds,
+          thumbnailUrl: thumbnailUrl,
+          language,
+          accentOrDialect,
+          voiceId: voiceResponse.data.data.voice._id,
+        });
+
+        console.log("Video data saved in the database!");
+
+        return successResponse({
+          res,
+          status: 201,
+          message: "Video created successfully",
+          data: { video },
+        });
+      } catch (error) {
+        console.error("Error generating video:", error);
+        res.status(500).json({ error: "Video generation failed." });
+      }
+    } catch (error) {
+      console.error("Error generating voiceover:", error);
+      res.status(500).json({ error: "Voiceover generation failed." });
     }
-
-    // Set up the YouTube API client
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
-
-    // YouTube API client
-    const youtube = google.youtube({
-      version: "v3",
-      auth: oauth2Client,
-    });
-
-    // Prepare the video file and metadata
-    const videoMetadata = {
-      snippet: {
-        title: "Sample Video",
-        description: "This is a sample video upload",
-        tags: ["sample", "video"],
-      },
-      status: {
-        privacyStatus: "public", // 'private', 'unlisted', or 'public'
-      },
-    };
-
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-
-    const videoPath = path.resolve(__dirname, "./video-1743793391026.mp4");
-
-    // Upload the video
-    // const videoPath = "./video-1743793391026.mp4"; // Path to the video file
-    const resUpload = await youtube.videos.insert({
-      part: "snippet,status",
-      media: {
-        body: fs.createReadStream(videoPath), // Use fs to stream the file
-      },
-      resource: videoMetadata,
-    });
-
-    // Handle the response
-    if (resUpload.status === 200) {
-      return res.status(200).json({
-        message: "Video uploaded successfully",
-        videoId: resUpload.data.id,
-      });
-    } else {
-      return res.status(500).json({ message: "Failed to upload video" });
-    }
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Internal Server Error" });
   }
+
+  // English video
+  if (language.toLowerCase() === Languages.english.en) {
+    try {
+      const API_HOST = process.env.API_HOST || "http://localhost:3000";
+      console.log("Generating Script...");
+
+      const scriptResponse = await axios.post(
+        `${API_HOST}/api/scripts/generate-ad-script`,
+        {
+          url,
+          language,
+        },
+        {
+          headers: {
+            Authorization: `${req.headers.authorization}`,
+          },
+        }
+      );
+
+      if (
+        !scriptResponse.data ||
+        !scriptResponse.data.data ||
+        !scriptResponse.data.data.script ||
+        !scriptResponse.data.data.title
+      ) {
+        throw new Error(
+          "Failed to generate script. API returned invalid response."
+        );
+      }
+
+      const script = scriptResponse.data.data.script || "";
+      const title = scriptResponse.data.data.title || "";
+
+      console.log("Formatted script:", script);
+
+      try {
+        switch (accentOrDialect.toLowerCase()) {
+          case AccentsAndDialects.egyptian.en:
+            reference_id = "eef8fc04ed1e4b7eb21323ef58be6008";
+            break;
+
+          case AccentsAndDialects.syrian.en:
+            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
+            break;
+
+          default:
+            break;
+        }
+
+        console.log("Generating Voiceover...");
+
+        const voiceResponse = await axios.post(
+          `${API_HOST}/api/voices/create-voice-over`,
+          {
+            title,
+            scriptText: script,
+            scriptId: scriptResponse.data.data.script._id,
+            language,
+            accentOrDialect,
+            reference_id,
+          },
+          {
+            headers: {
+              Authorization: `${req.headers.authorization}`,
+            },
+          }
+        );
+
+        if (
+          !voiceResponse.data ||
+          !voiceResponse.data.data ||
+          !voiceResponse.data.data.voiceSource
+        ) {
+          throw new Error(
+            "Failed to generate voiceover. API returned invalid response."
+          );
+        }
+
+        const voiceoverUrl =
+          voiceResponse.data.data.voiceSource.secure_url || null;
+
+        console.log("Voiceover URL:", voiceoverUrl);
+
+        const splitText = (text) => {
+          const isArabic =
+            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
+              text
+            );
+
+          let sentences;
+
+          if (isArabic) {
+            sentences = text
+              .split(/([.؟!\u06D4]+)/)
+              .reduce((result, current, index, array) => {
+                if (!current.trim()) return result;
+
+                if (/^[.؟!\u06D4]+$/.test(current)) {
+                  if (result.length > 0) {
+                    result[result.length - 1] += current;
+                  } else {
+                    result.push(current);
+                  }
+                } else if (
+                  index + 1 >= array.length ||
+                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                } else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          } else {
+            sentences = text
+              .split(/([.?!]+\s*)/)
+              .reduce((result, current, index, array) => {
+                if (!current.trim()) return result;
+
+                if (/[.?!]+\s*$/.test(current)) {
+                  result.push(current);
+                } else if (
+                  index + 1 < array.length &&
+                  /^[.?!]+\s*$/.test(array[index + 1])
+                ) {
+                  result.push(current);
+                } else {
+                  result.push(current);
+                }
+                return result;
+              }, []);
+          }
+
+          return sentences
+            .filter((sentence) => sentence.trim().length > 0)
+            .map((sentence) => sentence.trim());
+        };
+
+        const sentences = splitText(script);
+
+        console.log("Sentences to render:", sentences);
+
+        const totalFrames = sentences.length * FRAMES_PER_SENTENCE;
+
+        const fontSize = req.body.fontSize || 80;
+        const color = req.body.color || "white";
+        const fontFamily = req.body.fontFamily || "Cairo";
+
+        function getFontLoader(fontFamily) {
+          const fontMap = {
+            // Arabic Fonts
+            Amiri: loadAmiri,
+            Cairo: loadCairo,
+            Tajawal: loadTajawal,
+            Lateef: loadLateef,
+            "Reem Kufi": loadReemKufi,
+            Sofia: loadSofia,
+            Scheherazade: loadScheherazadeNew,
+
+            // English Fonts
+            "Open Sans": loadOpenSans,
+            Roboto: loadRoboto,
+            Lato: loadLato,
+            Poppins: loadPoppins,
+            Montserrat: loadMontserrat,
+            Merriweather: loadMerriweather,
+            "Slabo 27px": loadSlabo27px,
+            ABeeZee: loadABeeZee,
+            Lora: loadLora,
+            "Advent Pro": loadAdventPro,
+          };
+
+          return fontMap[fontFamily];
+        }
+        console.log(fontFamily);
+
+        const fontLoader = getFontLoader(fontFamily);
+        const { fontFamily: selectedFont } = await fontLoader();
+        console.log(selectedFont);
+
+        console.log(`Bundling project from: ${indexPath}`);
+        const bundled = await bundle(indexPath);
+
+        const compositions = await getCompositions(bundled, {
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            voiceoverUrl,
+          },
+        });
+
+        const composition = compositions.find((c) => c.id === "MyVideo");
+
+        if (!composition) {
+          throw new Error("Composition 'MyVideo' not found!");
+        }
+
+        console.log("Composition found. Rendering video...");
+
+        const outputLocation = `./output/video-${Date.now()}.mp4`;
+
+        await renderMedia({
+          concurrency: 1,
+          timeoutInMilliseconds: 60000, // set to 1 minute
+          composition: {
+            ...composition,
+            durationInFrames: totalFrames,
+          },
+          serveUrl: bundled,
+          codec: "h264",
+          outputLocation,
+          inputProps: {
+            sentences,
+            fontSize,
+            color,
+            fontFamily,
+            voiceoverUrl,
+          },
+        });
+
+        console.log("Video rendering completed!");
+
+        const cloudUploadResult = await cloud.uploader.upload(outputLocation, {
+          folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}`,
+          resource_type: "auto",
+        });
+
+        const durationInSeconds = Math.round(cloudUploadResult.duration);
+
+        console.log("Video uploading completed!");
+
+        fs.unlinkSync(outputLocation);
+
+        const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
+          resource_type: "video",
+          transformation: [
+            { width: 500, height: 281, crop: "fill" },
+            { start_offset: "15" },
+          ],
+        });
+
+        const video = await VideoModel.create({
+          createdBy: req.user._id,
+          title,
+          videoSource: cloudUploadResult,
+          scriptId: scriptResponse.data.data.script._id,
+          duration: durationInSeconds,
+          thumbnailUrl: thumbnailUrl,
+          language,
+          accentOrDialect,
+          voiceId: voiceResponse.data.data.voice._id,
+        });
+
+        console.log("Video data saved in the database!");
+
+        return successResponse({
+          res,
+          status: 201,
+          message: "Video created successfully",
+          data: { video },
+        });
+      } catch (error) {
+        console.error("Error generating video:", error);
+        res.status(500).json({ error: "Video generation failed." });
+      }
+    } catch (error) {
+      console.error("Error generating voiceover:", error);
+      res.status(500).json({ error: "Voiceover generation failed." });
+    }
+  }
+
+  res.status(500).json({ error: "Video generation failed." });
 });

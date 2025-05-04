@@ -36,7 +36,7 @@ const UserSchema = new mongoose.Schema(
       token_type: String,
       expiry_date: Number,
     },
-    aiCredits: { type: Number, default: 100 },
+    aiCredits: { type: Number, default: 25 },
     deletedAt: Date,
   },
   { timestamps: true }

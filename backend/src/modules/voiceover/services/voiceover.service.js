@@ -20,6 +20,9 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
     scriptText,
     reference_id,
     format = "mp3",
+    scriptId,
+    language,
+    accentOrDialect,
   } = req.body;
 
   if (!scriptText) {
@@ -65,7 +68,10 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
     const voice = await VoiceModel.create({
       createdBy: req.user._id,
       voiceSource: cloudUploadResult,
-      scriptId: req.body.scriptId,
+      scriptId,
+      voice_actor_id: reference_id,
+      language,
+      accentOrDialect,
     });
 
     return successResponse({

@@ -86,5 +86,15 @@ router.get(
   authentication(),
   userService.getUserData
 );
+router.get(
+  "/profile",
+  authentication(),
+  userService.getUserProfile
+);
+router.post(
+  "/redeem-credits",
+  authentication(),
+  userService.redeemCredits
+);
 
 export default router;

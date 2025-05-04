@@ -69,7 +69,7 @@ const MyVideo = ({
     ? fontLoader()
     : { fontFamily: "Arial" };
 
-  const sentenceDuration = 90;
+  const sentenceDuration = 80;
   const totalDuration = sentences.length * sentenceDuration;
 
   const backgroundImagePaths = [
@@ -89,13 +89,14 @@ const MyVideo = ({
     "image14.jpg",
     "image15.jpg",
   ]; // Background images array
-  const aiAvatarPath = staticFile(`videos/${fileName}`);
+  // const aiAvatarPath = staticFile(`videos/${fileName}`);
+  const aiAvatarPath = fileName ? staticFile(`videos/${fileName}`) : null;
   return (
     <AbsoluteFill style={{ backgroundColor: "white" }}>
       {voiceoverUrl && <Audio src={voiceoverUrl} />}
 
-      {/* Avatar Video — rendered once for the full duration */}
-      {aiAvatarPath && (
+      {/* Avatar Video — only if fileName is provided */}
+      {fileName && (
         <Video
           src={aiAvatarPath}
           startFrom={0}
@@ -106,7 +107,7 @@ const MyVideo = ({
             width: "100%",
             height: "960px",
             objectFit: "cover",
-            zIndex: 1, // Optional — adjust as needed
+            zIndex: 1,
           }}
         />
       )}

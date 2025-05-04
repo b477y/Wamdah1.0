@@ -1,44 +1,45 @@
-import axios from "axios";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const generateScriptWithAi = async (scrapedText) => {
-  const API_KEY = process.env.GROQ_API_KEY; // Replace with your actual Groq API key
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+export const generateScriptWithAi = async (
+  scrapedText,
+  language = "English"
+) => {
   try {
-    const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions", // Adjust URL if needed
-      {
-        model: "llama-3.3-70b-versatile", // High-quality AI model
-        messages: [
-          {
-            role: "user",
-            content: `
-            You are a creative ad copywriter. Create a short, engaging video voice-over script to promote a product using the details below.
-            
-            Rules:
-            - Write short sentences that can each be spoken aloud in 3 seconds.
-            - Use a natural, friendly tone — like a person casually talking to the viewer.
-            - Separate each sentence with a period (.) so they can be split later.
-            - Focus only on the product — ignore any unrelated content (login, signup, footer, etc.).
-            - Don't use headings or bullet points — just one flowing script.
-            - End with a clear call to action like “Get yours now!” or “Try it today!”
-            
-            Product info:
-            ${scrapedText}
-            `,
-            
-          },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-        },
-      }
-    );
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    return response.data.choices[0].message.content; // Returning the generated script
+    const prompt = `
+You are a creative ad copywriter. Create a short, engaging video voice-over script in ${language} to promote a product using the details below.
+
+Rules:
+- Write short, clear sentences that can be spoken in 3 seconds.
+- Use only **one punctuation mark at the end** of each sentence — prefer a period (.) or exclamation mark (!) — but not both.
+- Avoid repeating punctuation (e.g., . . or ! .).
+- Use a natural, friendly tone as if speaking directly to the audience.
+- Avoid headings, bullet points, or line breaks.
+- Focus strictly on product-related info — ignore unrelated text like login/signup.
+- End with a strong call to action like “Get yours now!” or “Try it today!”.
+- All content should be written in ${language}.
+- Ensure the script contains at least 12-24 short sentences for a ~30s - ~60s video.
+
+Product Info:
+${scrapedText}
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let text = response.text().trim();
+
+    // 🧼 Optional cleanup: remove repeated punctuation (". .", "! .", etc.)
+    text = text.replace(/(\.|\!)[\s]*\.(?=\s|$)/g, "$1"); // replaces ". ." and "! ." with "."
+    text = text.replace(/\.{2,}/g, "."); // replaces any ".." with "."
+    text = text.replace(/!{2,}/g, "!"); // replaces "!!" with "!"
+    text = text.replace(/\s{2,}/g, " "); // collapse multiple spaces
+
+    return text;
   } catch (error) {
-    console.error("Error generating script:", error);
+    console.error("Error generating script with Gemini:", error);
     throw new Error("Failed to generate script");
   }
 };

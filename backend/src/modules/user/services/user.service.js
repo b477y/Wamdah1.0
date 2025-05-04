@@ -118,3 +118,36 @@ export const downloadVideo = asyncHandler(async (req, res, next) => {
 
   res.redirect(videoUrl);
 });
+
+export const getUserProfile = asyncHandler(async (req, res, next) => {
+  const user = await UserModel.findById(req.user._id).select(
+    "name email aiCredits"
+  );
+  return successResponse({
+    res,
+    status: 200,
+    message: "User's profile retrieved successfully",
+    data: user,
+  });
+});
+
+export const redeemCredits = asyncHandler(async (req, res, next) => {
+  const { credits } = req.body;
+
+  if (typeof credits !== 'number' || credits <= 0) {
+    return next(new Error('Credits must be a positive number.'));
+  }
+
+  const user = await UserModel.findByIdAndUpdate(
+    req.user._id,
+    { $inc: { aiCredits: credits } },
+    { new: true }
+  );
+
+  return successResponse({
+    res,
+    status: 200,
+    message: "AI credits redeemed successfully",
+    data: user,
+  });
+});

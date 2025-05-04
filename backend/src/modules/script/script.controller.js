@@ -4,8 +4,11 @@ import authentication from "../../middlewares/authentication.middleware.js";
 
 const router = Router();
 
-router.post("/generate-script", authentication(), scriptService.generateScript);
-router.post("/generate", authentication(), scriptService.generateScriptUsingAi
+router.post(
+  "/generate-ad-script",
+  authentication(),
+  scriptService.generateScript4Product
 );
+router.post("/generate", authentication(), scriptService.generateScriptUsingAi);
 
 export default router;

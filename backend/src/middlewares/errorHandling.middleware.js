@@ -1,12 +1,22 @@
 const errorHandlingMiddleware = (error, req, res, next) => {
-  if (process.env.MODE === "DEVELOPMENT") {
-    return res
-      .status(error.cause || 400)
-      .json({ message: error.message, error, stack: error.stack });
+  if (res.headersSent) {
+    return; // Prevent double response
   }
-  return res
-    .status(error.cause || 400)
-    .json({ success: false, message: error.message });
+
+  const status = error.statusCode || 500;
+
+  if (process.env.MODE === "DEVELOPMENT") {
+    return res.status(status).json({
+      message: error.message,
+      error,
+      stack: error.stack,
+    });
+  }
+
+  return res.status(status).json({
+    success: false,
+    message: error.message,
+  });
 };
 
 export default errorHandlingMiddleware;
