@@ -3,6 +3,7 @@ import asyncHandler from "../../../utils/response/error.response.js";
 import successResponse from "../../../utils/response/success.response.js";
 import { cloud } from "../../../utils/multer/cloudinary.multer.js";
 import UserModel from "../../../db/models/User.model.js";
+import { emailEvent } from "../../../utils/events/email.event.js";
 
 export const getUserVideos = asyncHandler(async (req, res, next) => {
   const videos = await VideoModel.find({ createdBy: req.user._id }).sort({
@@ -82,22 +83,12 @@ export const getAiCredits = asyncHandler(async (req, res, next) => {
   });
 });
 
-export const getUserData = asyncHandler(async (req, res, next) => {
-  const videos = await VideoModel.find({ createdBy: req.user._id })
-    .sort({ createdAt: -1 })
-    .limit(3);
-
+export const getUserDashboard = asyncHandler(async (req, res, next) => {
+  const videos = await VideoModel.find({ createdBy: req.user._id }).sort({ createdAt: -1 }).limit(3);
   const aiCredits = await UserModel.findById(req.user._id).select("aiCredits");
-
-  const videosCount = await VideoModel.find({
-    createdBy: req.user._id,
-  }).countDocuments();
-
+  const videosCount = await VideoModel.find({ createdBy: req.user._id }).countDocuments();
   successResponse({
-    res,
-    status: 200,
-    message: "User's data retrieved successfully",
-    data: { aiCredits, videosCount, videos },
+    res, status: 200, message: "User's data retrieved successfully", data: { aiCredits, videosCount, videos },
   });
 });
 
@@ -131,23 +122,10 @@ export const getUserProfile = asyncHandler(async (req, res, next) => {
   });
 });
 
-export const redeemCredits = asyncHandler(async (req, res, next) => {
+export const purchaseCredits = asyncHandler(async (req, res, next) => {
   const { credits } = req.body;
-
-  if (typeof credits !== 'number' || credits <= 0) {
-    return next(new Error('Credits must be a positive number.'));
-  }
-
-  const user = await UserModel.findByIdAndUpdate(
-    req.user._id,
-    { $inc: { aiCredits: credits } },
-    { new: true }
-  );
-
-  return successResponse({
-    res,
-    status: 200,
-    message: "AI credits redeemed successfully",
-    data: user,
-  });
+  if (typeof credits !== 'number' || credits <= 0) { return next(new Error('Credits must be a positive number.')); }
+  const user = await UserModel.findByIdAndUpdate(req.user._id, { $inc: { aiCredits: credits } }, { new: true });
+  emailEvent.emit("sendPurchaseConfirmation", { email: user.email, name: user.name, credits: user.credits });
+  return successResponse({ res, status: 200, message: "AI credits added successfully" });
 });

@@ -9,6 +9,7 @@ const VoiceSchema = new mongoose.Schema(
       secure_url: { type: String, required: true },
       public_id: { type: String, required: true },
     },
+    voiceoverActorId: { type: String, required: true },
     language: {
       type: String,
       enum: Object.keys(Languages),
@@ -17,8 +18,6 @@ const VoiceSchema = new mongoose.Schema(
       type: String,
       enum: Object.keys(AccentsAndDialects),
     },
-    voice_actor_id: { type: String, required: true },
-    deletedAt: Date,
   },
   { timestamps: true }
 );

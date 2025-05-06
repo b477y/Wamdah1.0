@@ -3,9 +3,8 @@ import mongoose from "mongoose";
 const ScriptSchema = new mongoose.Schema(
   {
     createdBy: { type: mongoose.Types.ObjectId, ref: "User", required: true },
+    title: { type: String, required: true },
     content: { type: String, required: true },
-    generatedByAi: { type: Boolean, default: true },
-    deletedAt: Date,
   },
   { timestamps: true }
 );

@@ -63,9 +63,9 @@ router.post(
   }
 );
 
-router.get("/videos", authentication(), userService.getUserVideos);
-router.get("/recent-videos", authentication(), userService.getRecentVideos);
-router.get("/videos-count", authentication(), userService.getUserVideosCount);
+router.get("/videos", authentication(), userService.getUserVideos); // lsa
+router.get("/recent-videos", authentication(), userService.getRecentVideos); // 5las
+router.get("/videos-count", authentication(), userService.getUserVideosCount); // 5las
 router.patch(
   "/rename-video-title",
   authentication(),
@@ -84,7 +84,7 @@ router.get(
 router.get(
   "/data",
   authentication(),
-  userService.getUserData
+  userService.getUserDashboard
 );
 router.get(
   "/profile",
@@ -94,7 +94,7 @@ router.get(
 router.post(
   "/redeem-credits",
   authentication(),
-  userService.redeemCredits
+  userService.purchaseCredits
 );
 
 export default router;

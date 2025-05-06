@@ -35,6 +35,7 @@ Task:
 
   // Save script
   const script = await ScriptModel.create({
+    title: keyword,
     content: generatedScript,
     createdBy: req.user._id,
     generatedByAi: true,
@@ -106,6 +107,7 @@ export const generateScriptUsingAi = asyncHandler(async (req, res, next) => {
   console.log("Extracted Title:", title);
 
   const script = await ScriptModel.create({
+    title,
     content: generatedScript,
     createdBy: req.user._id,
     generatedByAi: true,

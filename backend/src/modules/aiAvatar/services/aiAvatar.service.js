@@ -23,35 +23,35 @@ const avatarMap = {
     name: "Brandon",
     avatar_id: "Brandon_expressive_public",
     voice_id: "3787b4ab93174952a3ad649209f1029a",
-    thumbnail:
+    avatar_image:
       "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192366/brandon_xhlyat.png",
   },
   diran: {
     name: "Diran",
     avatar_id: "Diran_Macbook_Casual_Front_public",
     voice_id: "1bd8ba4005004e6abfa46fad9ace1091",
-    thumbnail:
+    avatar_image:
       "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192360/diran_omhr8x.png",
   },
   justo: {
     name: "Justo",
     avatar_id: "Justo_EmployeeTraining_Front_public",
     voice_id: "49d1050d0a764f1394587a6d2409ea80",
-    thumbnail:
+    avatar_image:
       "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192366/justo_kvanft.png",
   },
   violante: {
     name: "Violante",
     avatar_id: "Violante_Brown_Suit_Front_public",
     voice_id: "1edc5e7338eb4e37b26dc8eb3f9b7e9c",
-    thumbnail:
+    avatar_image:
       "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192362/violante_drbaio.png",
   },
   imelda: {
     name: "Imelda",
     avatar_id: "Imelda_Casual_Front_public",
     voice_id: "3193b827155a485c9ba08adc05a4a509",
-    thumbnail:
+    avatar_image:
       "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192362/imelda_tvlgma.png",
   },
 };
@@ -61,7 +61,7 @@ export const retrieveAiAvatars = asyncHandler(async (req, res, next) => {
     return {
       name: avatar.name,
       avatar_id: avatar.avatar_id,
-      thumbnail: avatar.thumbnail,
+      avatar_image: avatar.avatar_image,
     };
   });
 

@@ -69,7 +69,7 @@ export const createVoiceOver = asyncHandler(async (req, res, next) => {
       createdBy: req.user._id,
       voiceSource: cloudUploadResult,
       scriptId,
-      voice_actor_id: reference_id,
+      voiceoverActorId: reference_id,
       language,
       accentOrDialect,
     });

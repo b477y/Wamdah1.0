@@ -1,28 +1,15 @@
 import mongoose from "mongoose";
 import { generateHash } from "../../utils/security/hash.security.js";
-import { Currency, Languages, UserRole } from "../../utils/enum/enums.js";
+import { UserRole } from "../../utils/enum/enums.js";
 
 const UserSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    language: {
-      type: String,
-      enum: Object.keys(Languages),
-      default: Languages.english.en,
-    },
     profilePicture: {
-      type: {
-        secure_url: String,
-        public_id: String,
-      },
-      default: null,
-    },
-    currency: {
-      type: String,
-      enum: Object.keys(Currency),
-      default: Currency.USD.en,
+      secure_url: { type: String },
+      public_id: { type: String },
     },
     role: {
       type: String,
