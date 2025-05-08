@@ -14,7 +14,7 @@ const RemotionRoot = () => {
         <Composition
             id="MyVideo"
             component={MyVideo}
-            durationInFrames={totalFrames} // Dynamically calculated
+            durationInFrames={1800} // Dynamically calculated
             fps={30}
             width={1080}
             height={1920}

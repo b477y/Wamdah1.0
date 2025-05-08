@@ -11,8 +11,8 @@ const VideoSchema = new mongoose.Schema(
     scriptId: { type: mongoose.Types.ObjectId, ref: "Script", required: true },
     voiceId: { type: mongoose.Types.ObjectId, ref: "Voice", required: false, default: undefined, },
     avatarId: { type: mongoose.Types.ObjectId, ref: "AiAvatar", required: false, default: undefined, },
-    language: { type: String, enum: Object.keys(Languages) },
-    accentOrDialect: { type: String, enum: Object.keys(AccentsAndDialects) },
+    language: { type: String, lowercase: true, enum: Object.keys(Languages) },
+    accentOrDialect: { type: String, lowercase: true, enum: Object.keys(AccentsAndDialects) },
     duration: { type: Number },
   }, { timestamps: true });
 

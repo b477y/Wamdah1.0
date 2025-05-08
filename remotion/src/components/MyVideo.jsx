@@ -69,7 +69,7 @@ const MyVideo = ({
     ? fontLoader()
     : { fontFamily: "Arial" };
 
-  const sentenceDuration = 80;
+  const sentenceDuration = 60;
   const totalDuration = sentences.length * sentenceDuration;
 
   const backgroundImagePaths = [
@@ -88,8 +88,13 @@ const MyVideo = ({
     "image13.jpg",
     "image14.jpg",
     "image15.jpg",
-  ]; // Background images array
-  // const aiAvatarPath = staticFile(`videos/${fileName}`);
+    "image16.jpg",
+    "image17.jpg",
+    "image18.jpg",
+    "image19.jpg",
+    "image20.jpg",
+  ]; 
+
   const aiAvatarPath = fileName ? staticFile(`videos/${fileName}`) : null;
   return (
     <AbsoluteFill style={{ backgroundColor: "white" }}>

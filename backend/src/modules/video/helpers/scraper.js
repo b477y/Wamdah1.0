@@ -7,24 +7,23 @@ export const scrapeText = async (url) => {
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    // Wait for any product container to load (adjust for your website)
     await page.waitForSelector("body");
 
     const text = await page.evaluate(() => {
       const selectors = [
-        "h1",                     // Product title
+        "h1",                    
         "#productTitle",                
         "#productTitle",                
         ".a-price-whole",                
-        ".price",                // Price class (common)
-        ".product-price",        // Alternate price
-        ".product-title",        // Alternate title
-        ".product-description",  // Main description
-        ".description",          // Fallback description
-        ".features",             // Features list
-        "ul li",                 // Feature points
-        "span",                  // All spans
-        "p"                      // All paragraphs
+        ".price",                
+        ".product-price",        
+        ".product-title",        
+        ".product-description", 
+        ".description",          
+        ".features",         
+        "ul li",              
+        "span",                
+        "p"                     
       ];
 
       const content = [];

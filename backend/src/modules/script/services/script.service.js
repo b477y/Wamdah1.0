@@ -2,8 +2,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import ScriptModel from "../../../db/models/Script.model.js";
 import asyncHandler from "../../../utils/response/error.response.js";
 import successResponse from "../../../utils/response/success.response.js";
-import { scrapeText } from "../helpers/scraper.js";
-import { generateScriptWithAi } from "../helpers/scriptGenerator.js";
+import { scrapeText } from "../../video/helpers/scraper.js";
+import { generateScriptWithAi } from "../../video/helpers/scriptGenerator.js";
 import searchImages from "../../../utils/imagesCollector/imagesCollector.js";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -53,7 +53,7 @@ Task:
   });
 });
 
-export const generateScriptUsingAi = asyncHandler(async (req, res, next) => {
+export const generateScriptUsingGimini = asyncHandler(async (req, res, next) => {
   const { type, userPrompt, language, accentOrDialect } = req.body;
 
   const typePrompts = {

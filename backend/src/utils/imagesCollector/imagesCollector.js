@@ -36,8 +36,8 @@ const searchImages = async (query) => {
     let successfulDownloads = 0;
     let imageIndex = 0;
 
-    // Keep trying to download images until we have 15 successful ones
-    while (successfulDownloads < 15) {
+    // Keep trying to download images until we have 20 successful ones
+    while (successfulDownloads < 20) {
       // If there are no more images to check in the response, fetch more
       if (imageIndex >= images.length) {
         console.log("Fetching more images...");

@@ -9,6 +9,6 @@ router.post(
   authentication(),
   scriptService.generateScript4Product
 );
-router.post("/generate", authentication(), scriptService.generateScriptUsingAi);
+router.post("/generate", authentication(), scriptService.generateScriptUsingGimini);
 
 export default router;

@@ -73,20 +73,15 @@ export const retrieveAiAvatars = asyncHandler(async (req, res, next) => {
   });
 });
 
-export const generateVideo = asyncHandler(async (req, res, next) => {
-  const { speaker, script } = req.body;
+export const generateAiAvatarWithCroma = async ({ req, speaker, script }) => {
 
   if (!speaker || !script) {
-    return res.status(400).json({
-      message: "Missing required fields: speaker and script",
-    });
+    throw new Error("Missing required fields: speaker and script")
   }
 
   const avatarData = avatarMap[speaker.toLowerCase()];
   if (!avatarData) {
-    return res.status(400).json({
-      message: "Invalid speaker selected. Choose 'brandon' or 'lina'",
-    });
+    throw new Error("Invalid speaker selected.")
   }
 
   const requestBody = {
@@ -115,7 +110,6 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
   };
 
   try {
-    // Step 1: Generate video
     const response = await axios.post(generateVideoUrl, requestBody, {
       headers: {
         "Content-Type": "application/json",
@@ -129,10 +123,9 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
 
     const videoId = response.data.data.video_id;
 
-    // Step 2: Poll until video is ready
     let statusData;
     let attempts = 0;
-    const maxAttempts = 240; // Max retries (e.g., 20 mins)
+    const maxAttempts = 240;
     do {
       if (attempts >= maxAttempts) {
         return res.status(500).json({ message: "Video processing timeout" });
@@ -160,9 +153,8 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
       attempts++;
     } while (statusData.status !== "completed");
 
-    // Step 3: Download the video
     const videoUrl = statusData.video_url;
-    const timestamp = Date.now(); // generate once
+    const timestamp = Date.now();
     const fileName = `${speaker}_${timestamp}.mp4`;
 
     const __filename = fileURLToPath(import.meta.url);
@@ -193,9 +185,9 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
 
     console.log(`Video saved locally at ${outputPath}`);
 
-    // Step 4: Remove green background and convert to webm format with transparency
     const outputWebm = path.join(videosDir, `${speaker}_${timestamp}.webm`);
 
+    // Removing Croma
     await new Promise((resolve, reject) => {
       exec(
         `ffmpeg -i "${outputPath}" -vf "chromakey=0x00FF00:0.3:0.0" -c:v libvpx -pix_fmt yuva420p -auto-alt-ref 0 "${outputWebm}" -y`,
@@ -204,36 +196,26 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             console.error("Error removing background:", stderr);
             return reject(error);
           }
-          console.log(
-            "Background removed and converted to .webm successfully."
-          );
+          console.log("Background removed and converted to .webm successfully.");
           resolve();
         }
       );
     });
 
-    // Step 5: Upload to Cloudinary
     const cloudUploadResult = await cloud.uploader.upload(outputWebm, {
       folder: `${process.env.APP_NAME}/${req.user._id}/${req.body.title}/ai-avatar-video`,
       resource_type: "video",
     });
 
-    return successResponse({
-      res,
-      status: 200,
-      message: "Video generated and uploaded successfully",
-      data: {
-        videoSource: {
-          public_id: cloudUploadResult.public_id,
-          secure_url: cloudUploadResult.secure_url,
-          fileName: `${speaker}_${timestamp}.webm`,
-        },
-      },
-    });
+    return {
+      videoSource: {
+        public_id: cloudUploadResult.public_id,
+        secure_url: cloudUploadResult.secure_url,
+        fileName: `${speaker}_${timestamp}.webm`,
+      }
+    };
   } catch (error) {
     console.error("Error:", error);
-    return res
-      .status(500)
-      .json({ message: "An error occurred while generating the video." });
+    throw new Error("An error occurred while generating the video")
   }
-});
+};

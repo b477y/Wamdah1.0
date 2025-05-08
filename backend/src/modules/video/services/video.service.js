@@ -32,12 +32,16 @@ import { loadFont as loadABeeZee } from "@remotion/google-fonts/ABeeZee";
 import { loadFont as loadLora } from "@remotion/google-fonts/Lora";
 import { loadFont as loadAdventPro } from "@remotion/google-fonts/AdventPro";
 import UserModel from "../../../db/models/User.model.js";
-import searchImages from "../../../utils/imagesCollector/imagesCollector.js";
 import { AccentsAndDialects, Languages } from "../../../utils/enum/enums.js";
+import { generateScriptUsingGimini } from "../helpers/generateScriptUsingGimini.js";
+import { createVoiceOver } from "../helpers/voiceover.js";
+import splitText from "../helpers/splitText.js";
+import { generateAiAvatarWithCroma } from "../../aiAvatar/services/aiAvatar.service.js";
+import generateScript4Product from "../helpers/generateScript4Product.js";
 
 // Instant video
 export const generateVideo = asyncHandler(async (req, res, next) => {
-  const { userPrompt, type, language, accentOrDialect, speaker } = req.body;
+  const { userPrompt, type, language, accentOrDialect } = req.body;
   let reference_id; // voice over actor id
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -47,50 +51,39 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
     "../../../../../remotion/src/index.jsx"
   );
 
-  const FRAMES_PER_SENTENCE = 90; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
+  const FRAMES_PER_SENTENCE = 60; // will be change based on the frontend request 30 FPS => 60/30 => 2 sec/screen
 
   // Arabic video
   if (language.toLowerCase() === Languages.arabic.en) {
     try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
       console.log("Generating Script...");
 
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate`,
-        {
-          type,
-          userPrompt,
-          language,
-          accentOrDialect,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
+      const scriptResponse = await generateScriptUsingGimini({
+        req,
+        type,
+        userPrompt,
+        language,
+      });
+      console.log(scriptResponse);
 
       if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.formattedScript ||
-        !scriptResponse.data.data.title
+        !scriptResponse.script ||
+        !scriptResponse.formattedScript ||
+        !scriptResponse.title
       ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
+        throw new Error("Failed to generate script correctly.");
       }
 
-      const script = scriptResponse.data.data.formattedScript || "";
-      const title = scriptResponse.data.data.title || "";
+      const script = scriptResponse.formattedScript || "";
+      const scriptId = scriptResponse.script._id || "";
+      const title = scriptResponse.title || "";
 
       console.log("Formatted script:", script);
 
       try {
         switch (accentOrDialect.toLowerCase()) {
           case AccentsAndDialects.egyptian.en:
-            // reference_id = "eef8fc04ed1e4b7eb21323ef58be6008"; // maged
-            reference_id = "e82e453034a84376a14bb8438fafe9a3"; // elda7i7
+            reference_id = "e82e453034a84376a14bb8438fafe9a3";
             break;
 
           case AccentsAndDialects.syrian.en:
@@ -103,113 +96,24 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
 
         console.log("Generating Voiceover...");
 
-        const voiceResponse = await axios.post(
-          `${API_HOST}/api/voices/create-voice-over`,
-          {
-            title,
-            scriptText: script,
-            scriptId: scriptResponse.data.data.script._id,
-            language,
-            accentOrDialect,
-            reference_id,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-          }
-        );
+        const voiceResponse = await createVoiceOver({
+          req,
+          title,
+          scriptText: script,
+          reference_id,
+          scriptId,
+          language,
+          accentOrDialect,
+        });
 
-        if (
-          !voiceResponse.data ||
-          !voiceResponse.data.data ||
-          !voiceResponse.data.data.voiceSource
-        ) {
-          next(
-            new Error(
-              "Failed to generate voiceover. API returned invalid response."
-            )
-          );
+        if (!voiceResponse.voice.voiceSource.secure_url) {
+          next(new Error("Failed to generate voiceover correctly and upload it correctly"));
         }
 
-        const voiceoverUrl =
-          voiceResponse.data.data.voiceSource.secure_url || null;
+        const voiceoverUrl = voiceResponse.voice.voiceSource.secure_url || null;
 
         console.log("Voiceover URL:", voiceoverUrl);
 
-        // Enhanced sentence splitting with proper Arabic text direction handling
-        const splitText = (text) => {
-          // First, identify if the text is predominantly Arabic
-          const isArabic =
-            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-              text
-            );
-
-          // Use appropriate regex based on text language
-          let sentences;
-
-          if (isArabic) {
-            // Split at Arabic sentence ending punctuation (question mark, period, exclamation)
-            sentences = text
-              .split(/([.؟!\u06D4]+)/)
-              .reduce((result, current, index, array) => {
-                // Skip empty parts
-                if (!current.trim()) return result;
-
-                // If this is punctuation, append to previous sentence
-                if (/^[.؟!\u06D4]+$/.test(current)) {
-                  if (result.length > 0) {
-                    result[result.length - 1] += current;
-                  } else {
-                    result.push(current);
-                  }
-                }
-                // If not punctuation and not followed by punctuation, it's a complete sentence
-                else if (
-                  index + 1 >= array.length ||
-                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                }
-                // Otherwise, this part will be joined with punctuation in next iteration
-                else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          } else {
-            // English and other LTR languages
-            sentences = text
-              .split(/([.?!]+\s*)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                // If this part contains ending punctuation
-                if (/[.?!]+\s*$/.test(current)) {
-                  result.push(current);
-                }
-                // If next part is punctuation, wait for it
-                else if (
-                  index + 1 < array.length &&
-                  /^[.?!]+\s*$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                }
-                // Otherwise it's a sentence without punctuation
-                else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          }
-
-          // Clean up: trim spaces and filter empty strings
-          return sentences
-            .filter((sentence) => sentence.trim().length > 0)
-            .map((sentence) => sentence.trim());
-        };
-
-        // Replace your existing sentence splitting with the new function
         const sentences = splitText(script);
 
         console.log("Sentences to render:", sentences);
@@ -262,6 +166,7 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             color,
             fontFamily,
             voiceoverUrl,
+            videoDuration: totalFrames,
           },
         });
 
@@ -291,6 +196,7 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             color,
             fontFamily,
             voiceoverUrl,
+            videoDuration: totalFrames,
           },
         });
 
@@ -301,9 +207,17 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
           resource_type: "auto",
         });
 
-        const durationInSeconds = Math.round(cloudUploadResult.duration);
+        if (!cloudUploadResult) {
+          next(
+            new Error(
+              "An error occured while uploading the video into the cloud provider"
+            )
+          );
+        }
 
         console.log("Video uploading completed!");
+
+        const durationInSeconds = Math.round(cloudUploadResult.duration);
 
         fs.unlinkSync(outputLocation);
 
@@ -315,17 +229,29 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
           ],
         });
 
+        if (!thumbnailUrl) {
+          next(new Error("An error occured while getting the thumbnail url"));
+        }
+
         const video = await VideoModel.create({
           createdBy: req.user._id,
           title,
           videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data.script._id,
+          scriptId,
           duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
           language,
           accentOrDialect,
-          voiceId: voiceResponse.data.data.voice._id,
+          voiceId: voiceResponse.voice._id,
         });
+
+        if (!video) {
+          return next(
+            new Error("An error saving the video into the database", {
+              cause: 409,
+            })
+          );
+        }
 
         console.log("Video data saved in the database!");
 
@@ -348,48 +274,36 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
   // English video
   if (language.toLowerCase() === Languages.english.en) {
     try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
       console.log("Generating Script...");
 
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate`,
-        {
-          type,
-          userPrompt,
-          language,
-          accentOrDialect,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
+      const scriptResponse = await generateScriptUsingGimini({
+        req,
+        type,
+        userPrompt,
+        language,
+      });
       if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.formattedScript ||
-        !scriptResponse.data.data.title
+        !scriptResponse.script ||
+        !scriptResponse.foramttedScript ||
+        !scriptResponse.title
       ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
+        throw new Error("Failed to generate script correctly.");
       }
 
-      const script = scriptResponse.data.data.formattedScript || "";
-      const title = scriptResponse.data.data.title || "";
+      const script = scriptResponse.formattedScript || "";
+      const scriptId = scriptResponse.script._id || "";
+      const title = scriptResponse.title || "";
 
       console.log("Formatted script:", script);
 
       try {
         switch (accentOrDialect.toLowerCase()) {
-          case AccentsAndDialects.egyptian.en:
-            reference_id = "eef8fc04ed1e4b7eb21323ef58be6008";
+          case AccentsAndDialects.american.en:
+            reference_id = "802e3bc2b27e49c2995d23ef70e6ac89";
             break;
 
-          case AccentsAndDialects.syrian.en:
-            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
+          case AccentsAndDialects.british.en:
+            reference_id = "728f6ff2240d49308e8137ffe66008e2";
             break;
 
           default:
@@ -398,111 +312,23 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
 
         console.log("Generating Voiceover...");
 
-        const voiceResponse = await axios.post(
-          `${API_HOST}/api/voices/create-voice-over`,
-          {
-            title,
-            scriptText: script,
-            scriptId: scriptResponse.data.data.script._id,
-            language,
-            accentOrDialect,
-            reference_id,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-          }
-        );
+        const voiceResponse = await createVoiceOver({
+          req,
+          title,
+          scriptText: script,
+          reference_id,
+          scriptId,
+          language,
+          accentOrDialect,
+        });
 
-        if (
-          !voiceResponse.data ||
-          !voiceResponse.data.data ||
-          !voiceResponse.data.data.voiceSource
-        ) {
-          throw new Error(
-            "Failed to generate voiceover. API returned invalid response."
-          );
+        if (!voiceResponse.voice.voiceSource.secure_url) {
+          next(new Error("Failed to generate voiceover correctly and upload it correctly"));
         }
 
-        const voiceoverUrl =
-          voiceResponse.data.data.voiceSource.secure_url || null;
+        const voiceoverUrl = voiceResponse.voice.voiceSource.secure_url || null;
 
         console.log("Voiceover URL:", voiceoverUrl);
-
-        const aiAvatarResponse = await axios.post(
-          `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
-          {
-            title,
-            speaker,
-            script,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-            timeout: 3600000,
-          }
-        );
-
-        console.log(aiAvatarResponse.data.data.videoSource.secure_url);
-        console.log(aiAvatarResponse.data.data.videoSource.outputPath);
-        console.log(aiAvatarResponse.data.data.videoSource.fileName);
-
-        const splitText = (text) => {
-          const isArabic =
-            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-              text
-            );
-
-          let sentences;
-
-          if (isArabic) {
-            sentences = text
-              .split(/([.؟!\u06D4]+)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                if (/^[.؟!\u06D4]+$/.test(current)) {
-                  if (result.length > 0) {
-                    result[result.length - 1] += current;
-                  } else {
-                    result.push(current);
-                  }
-                } else if (
-                  index + 1 >= array.length ||
-                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                } else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          } else {
-            sentences = text
-              .split(/([.?!]+\s*)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                if (/[.?!]+\s*$/.test(current)) {
-                  result.push(current);
-                } else if (
-                  index + 1 < array.length &&
-                  /^[.?!]+\s*$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                } else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          }
-
-          return sentences
-            .filter((sentence) => sentence.trim().length > 0)
-            .map((sentence) => sentence.trim());
-        };
 
         const sentences = splitText(script);
 
@@ -555,7 +381,7 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+            voiceoverUrl,
           },
         });
 
@@ -584,7 +410,7 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+            voiceoverUrl,
           },
         });
 
@@ -595,9 +421,17 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
           resource_type: "auto",
         });
 
-        const durationInSeconds = Math.round(cloudUploadResult.duration);
+        if (!cloudUploadResult) {
+          next(
+            new Error(
+              "An error occured while uploading the video into the cloud provider"
+            )
+          );
+        }
 
         console.log("Video uploading completed!");
+
+        const durationInSeconds = Math.round(cloudUploadResult.duration);
 
         fs.unlinkSync(outputLocation);
 
@@ -609,16 +443,20 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
           ],
         });
 
+        if (!thumbnailUrl) {
+          next(new Error("An error occured while getting the thumbnail url"));
+        }
+
         const video = await VideoModel.create({
           createdBy: req.user._id,
           title,
           videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data.script._id,
+          scriptId,
           duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
           language,
           accentOrDialect,
-          voiceId: voiceResponse.data.data.voice._id,
+          voiceId: voiceResponse.voice._id,
         });
 
         console.log("Video data saved in the database!");
@@ -645,7 +483,6 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
 // AI Spoke person
 export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
   const { userPrompt, type, language, accentOrDialect, speaker } = req.body;
-  let reference_id; // voice over actor id
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
 
@@ -659,131 +496,35 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
   // Arabic video
   if (language.toLowerCase() === Languages.arabic.en) {
     try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
       console.log("Generating Script...");
 
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate`,
-        {
-          type,
-          userPrompt,
-          language,
-          accentOrDialect,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
+      const scriptResponse = await generateScriptUsingGimini({
+        req,
+        type,
+        userPrompt,
+        language,
+      });
       if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.formattedScript ||
-        !scriptResponse.data.data.title
+        !scriptResponse.script ||
+        !scriptResponse.formattedScript ||
+        !scriptResponse.title
       ) {
         throw new Error(
           "Failed to generate script. API returned invalid response."
         );
       }
 
-      const script = scriptResponse.data.data.formattedScript || "";
-      const title = scriptResponse.data.data.title || "";
+      const script = scriptResponse.formattedScript || "";
+      const scriptId = scriptResponse.script._id || "";
+      const title = scriptResponse.title || "";
 
       console.log("Formatted script:", script);
 
       try {
-        const aiAvatarResponse = await axios.post(
-          `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
-          {
-            title,
-            speaker,
-            script,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-            timeout: 3600000,
-          }
-        );
+        const aiAvatarResponse = await generateAiAvatarWithCroma({ req, speaker, script })
 
-        console.log(aiAvatarResponse.data.data.videoSource.secure_url);
-        console.log(aiAvatarResponse.data.data.videoSource.outputPath);
-        console.log(aiAvatarResponse.data.data.videoSource.fileName);
-
-        // Enhanced sentence splitting with proper Arabic text direction handling
-        const splitText = (text) => {
-          // First, identify if the text is predominantly Arabic
-          const isArabic =
-            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-              text
-            );
-
-          // Use appropriate regex based on text language
-          let sentences;
-
-          if (isArabic) {
-            // Split at Arabic sentence ending punctuation (question mark, period, exclamation)
-            sentences = text
-              .split(/([.؟!\u06D4]+)/)
-              .reduce((result, current, index, array) => {
-                // Skip empty parts
-                if (!current.trim()) return result;
-
-                // If this is punctuation, append to previous sentence
-                if (/^[.؟!\u06D4]+$/.test(current)) {
-                  if (result.length > 0) {
-                    result[result.length - 1] += current;
-                  } else {
-                    result.push(current);
-                  }
-                }
-                // If not punctuation and not followed by punctuation, it's a complete sentence
-                else if (
-                  index + 1 >= array.length ||
-                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                }
-                // Otherwise, this part will be joined with punctuation in next iteration
-                else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          } else {
-            // English and other LTR languages
-            sentences = text
-              .split(/([.?!]+\s*)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                // If this part contains ending punctuation
-                if (/[.?!]+\s*$/.test(current)) {
-                  result.push(current);
-                }
-                // If next part is punctuation, wait for it
-                else if (
-                  index + 1 < array.length &&
-                  /^[.?!]+\s*$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                }
-                // Otherwise it's a sentence without punctuation
-                else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          }
-
-          // Clean up: trim spaces and filter empty strings
-          return sentences
-            .filter((sentence) => sentence.trim().length > 0)
-            .map((sentence) => sentence.trim());
-        };
+        console.log(aiAvatarResponse.videoSource.secure_url);
+        console.log(aiAvatarResponse.videoSource.fileName);
 
         // Replace your existing sentence splitting with the new function
         const sentences = splitText(script);
@@ -837,7 +578,7 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+            fileName: aiAvatarResponse.videoSource.fileName,
           },
         });
 
@@ -866,7 +607,7 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+            fileName: aiAvatarResponse.videoSource.fileName,
           },
         });
 
@@ -895,11 +636,12 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
           createdBy: req.user._id,
           title,
           videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data.script._id,
-          duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
+          scriptId,
+          voiceId: voiceResponse.voice._id,
           language,
           accentOrDialect,
+          duration: durationInSeconds,
         });
 
         console.log("Video data saved in the database!");
@@ -923,134 +665,35 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
   // English video
   if (language.toLowerCase() === Languages.english.en) {
     try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
       console.log("Generating Script...");
 
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate`,
-        {
-          type,
-          userPrompt,
-          language,
-          accentOrDialect,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
+      const scriptResponse = await generateScriptUsingGimini({
+        req,
+        type,
+        userPrompt,
+        language,
+      });
       if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.formattedScript ||
-        !scriptResponse.data.data.title
+        !scriptResponse.script ||
+        !scriptResponse.foramttedScript ||
+        !scriptResponse.title
       ) {
         throw new Error(
           "Failed to generate script. API returned invalid response."
         );
       }
 
-      const script = scriptResponse.data.data.formattedScript || "";
-      const title = scriptResponse.data.data.title || "";
+      const script = scriptResponse.formattedScript || "";
+      const scriptId = scriptResponse.script._id || "";
+      const title = scriptResponse.title || "";
 
       console.log("Formatted script:", script);
 
       try {
-        switch (accentOrDialect.toLowerCase()) {
-          case AccentsAndDialects.egyptian.en:
-            reference_id = "eef8fc04ed1e4b7eb21323ef58be6008";
-            break;
+        const aiAvatarResponse = await generateAiAvatarWithCroma({ req, speaker, script })
 
-          case AccentsAndDialects.syrian.en:
-            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
-            break;
-
-          default:
-            break;
-        }
-
-        console.log("Generating Voiceover...");
-
-        const voiceoverUrl =
-          voiceResponse.data.data.voiceSource.secure_url || null;
-
-        console.log("Voiceover URL:", voiceoverUrl);
-
-        const aiAvatarResponse = await axios.post(
-          `${API_HOST}/api/aiAvatar/generate-ai-avatar`,
-          {
-            title,
-            speaker,
-            script,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-            timeout: 3600000,
-          }
-        );
-
-        console.log(aiAvatarResponse.data.data.videoSource.secure_url);
-        console.log(aiAvatarResponse.data.data.videoSource.outputPath);
-        console.log(aiAvatarResponse.data.data.videoSource.fileName);
-
-        const splitText = (text) => {
-          const isArabic =
-            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-              text
-            );
-
-          let sentences;
-
-          if (isArabic) {
-            sentences = text
-              .split(/([.؟!\u06D4]+)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                if (/^[.؟!\u06D4]+$/.test(current)) {
-                  if (result.length > 0) {
-                    result[result.length - 1] += current;
-                  } else {
-                    result.push(current);
-                  }
-                } else if (
-                  index + 1 >= array.length ||
-                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                } else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          } else {
-            sentences = text
-              .split(/([.?!]+\s*)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                if (/[.?!]+\s*$/.test(current)) {
-                  result.push(current);
-                } else if (
-                  index + 1 < array.length &&
-                  /^[.?!]+\s*$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                } else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          }
-
-          return sentences
-            .filter((sentence) => sentence.trim().length > 0)
-            .map((sentence) => sentence.trim());
-        };
+        console.log(aiAvatarResponse.videoSource.secure_url);
+        console.log(aiAvatarResponse.videoSource.fileName);
 
         const sentences = splitText(script);
 
@@ -1103,7 +746,7 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+            fileName: aiAvatarResponse.videoSource.fileName,
           },
         });
 
@@ -1132,7 +775,7 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
             fontSize,
             color,
             fontFamily,
-            fileName: aiAvatarResponse.data.data.videoSource.fileName,
+            fileName: aiAvatarResponse.videoSource.fileName,
           },
         });
 
@@ -1156,16 +799,16 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
             { start_offset: "15" },
           ],
         });
-
         const video = await VideoModel.create({
           createdBy: req.user._id,
           title,
           videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data.script._id,
-          duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
+          scriptId,
+          voiceId: voiceResponse.voice._id,
           language,
           accentOrDialect,
+          duration: durationInSeconds,
         });
 
         console.log("Video data saved in the database!");
@@ -1206,164 +849,48 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
   // Arabic video
   if (language.toLowerCase() === Languages.arabic.en) {
     try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
       console.log("Generating Script...");
 
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate-ad-script`,
-        {
-          url,
-          language,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
+      const scriptResponse = generateScript4Product({
+        req,
+        url,
+        language,
+      });
       if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.script ||
-        !scriptResponse.data.data.scriptId ||
-        !scriptResponse.data.data.title
+        !scriptResponse.script ||
+        !scriptResponse.scriptId ||
+        !scriptResponse.title
       ) {
         throw new Error(
           "Failed to generate script. API returned invalid response."
         );
       }
 
-      const script = scriptResponse.data.data.script || "";
-      const scriptId = scriptResponse.data.data.scriptId || "";
-      const title = scriptResponse.data.data.title || "";
+      const script = scriptResponse.script || "";
+      const scriptId = scriptResponse.scriptId || "";
+      const title = scriptResponse.title || "";
 
       console.log("Formatted script:", script);
 
       try {
-        switch (accentOrDialect.toLowerCase()) {
-          case AccentsAndDialects.egyptian.en:
-            // reference_id = "eef8fc04ed1e4b7eb21323ef58be6008"; // maged
-            reference_id = "e82e453034a84376a14bb8438fafe9a3"; // elda7i7
-            break;
-
-          case AccentsAndDialects.syrian.en:
-            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
-            break;
-
-          default:
-            break;
-        }
-
         console.log("Generating Voiceover...");
 
-        const voiceResponse = await axios.post(
-          `${API_HOST}/api/voices/create-voice-over`,
-          {
-            title,
-            scriptText: script,
-            scriptId,
-            language,
-            accentOrDialect,
-            reference_id,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-          }
-        );
+        const voiceResponse = await createVoiceOver({
+          req,
+          title,
+          scriptText: script,
+          reference_id,
+          scriptId,
+          language,
+          accentOrDialect,
+        });
 
-        if (
-          !voiceResponse.data ||
-          !voiceResponse.data.data ||
-          !voiceResponse.data.data.voiceSource
-        ) {
-          next(
-            new Error(
-              "Failed to generate voiceover. API returned invalid response."
-            )
-          );
+        if (!voiceResponse.voiceSource) {
+          next(new Error("Failed to generate voiceover correctly"));
         }
 
-        const voiceoverUrl =
-          voiceResponse.data.data.voiceSource.secure_url || null;
+        const voiceoverUrl = voiceResponse.voiceSource.secure_url || null;
 
-        console.log("Voiceover URL:", voiceoverUrl);
-
-        // Enhanced sentence splitting with proper Arabic text direction handling
-        const splitText = (text) => {
-          // First, identify if the text is predominantly Arabic
-          const isArabic =
-            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-              text
-            );
-
-          // Use appropriate regex based on text language
-          let sentences;
-
-          if (isArabic) {
-            // Split at Arabic sentence ending punctuation (question mark, period, exclamation)
-            sentences = text
-              .split(/([.؟!\u06D4]+)/)
-              .reduce((result, current, index, array) => {
-                // Skip empty parts
-                if (!current.trim()) return result;
-
-                // If this is punctuation, append to previous sentence
-                if (/^[.؟!\u06D4]+$/.test(current)) {
-                  if (result.length > 0) {
-                    result[result.length - 1] += current;
-                  } else {
-                    result.push(current);
-                  }
-                }
-                // If not punctuation and not followed by punctuation, it's a complete sentence
-                else if (
-                  index + 1 >= array.length ||
-                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                }
-                // Otherwise, this part will be joined with punctuation in next iteration
-                else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          } else {
-            // English and other LTR languages
-            sentences = text
-              .split(/([.?!]+\s*)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                // If this part contains ending punctuation
-                if (/[.?!]+\s*$/.test(current)) {
-                  result.push(current);
-                }
-                // If next part is punctuation, wait for it
-                else if (
-                  index + 1 < array.length &&
-                  /^[.?!]+\s*$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                }
-                // Otherwise it's a sentence without punctuation
-                else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          }
-
-          // Clean up: trim spaces and filter empty strings
-          return sentences
-            .filter((sentence) => sentence.trim().length > 0)
-            .map((sentence) => sentence.trim());
-        };
-
-        // Replace your existing sentence splitting with the new function
         const sentences = splitText(script);
 
         console.log("Sentences to render:", sentences);
@@ -1475,10 +1002,10 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
           videoSource: cloudUploadResult,
           scriptId,
           duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
           language,
           accentOrDialect,
-          voiceId: voiceResponse.data.data.voice._id,
+          voiceId: voiceResponse.voice._id,
         });
 
         console.log("Video data saved in the database!");
@@ -1502,46 +1029,36 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
   // English video
   if (language.toLowerCase() === Languages.english.en) {
     try {
-      const API_HOST = process.env.API_HOST || "http://localhost:3000";
       console.log("Generating Script...");
 
-      const scriptResponse = await axios.post(
-        `${API_HOST}/api/scripts/generate-ad-script`,
-        {
-          url,
-          language,
-        },
-        {
-          headers: {
-            Authorization: `${req.headers.authorization}`,
-          },
-        }
-      );
-
+      const scriptResponse = await generateScriptUsingGimini({
+        req,
+        type,
+        userPrompt,
+        language,
+      });
       if (
-        !scriptResponse.data ||
-        !scriptResponse.data.data ||
-        !scriptResponse.data.data.script ||
-        !scriptResponse.data.data.title
+        !scriptResponse.script ||
+        !scriptResponse.foramttedScript ||
+        !scriptResponse.title
       ) {
-        throw new Error(
-          "Failed to generate script. API returned invalid response."
-        );
+        throw new Error("Failed to generate script correctly.");
       }
 
-      const script = scriptResponse.data.data.script || "";
-      const title = scriptResponse.data.data.title || "";
+      const script = scriptResponse.formattedScript || "";
+      const scriptId = scriptResponse.script._id || "";
+      const title = scriptResponse.title || "";
 
       console.log("Formatted script:", script);
 
       try {
         switch (accentOrDialect.toLowerCase()) {
-          case AccentsAndDialects.egyptian.en:
-            reference_id = "eef8fc04ed1e4b7eb21323ef58be6008";
+          case AccentsAndDialects.american.en:
+            reference_id = "802e3bc2b27e49c2995d23ef70e6ac89";
             break;
 
-          case AccentsAndDialects.syrian.en:
-            reference_id = "27c3d5e27b664b1cb692699a661ed91a";
+          case AccentsAndDialects.british.en:
+            reference_id = "728f6ff2240d49308e8137ffe66008e2";
             break;
 
           default:
@@ -1550,92 +1067,23 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
 
         console.log("Generating Voiceover...");
 
-        const voiceResponse = await axios.post(
-          `${API_HOST}/api/voices/create-voice-over`,
-          {
-            title,
-            scriptText: script,
-            scriptId: scriptResponse.data.data.script._id,
-            language,
-            accentOrDialect,
-            reference_id,
-          },
-          {
-            headers: {
-              Authorization: `${req.headers.authorization}`,
-            },
-          }
-        );
+        const voiceResponse = await createVoiceOver({
+          req,
+          title,
+          scriptText: script,
+          reference_id,
+          scriptId,
+          language,
+          accentOrDialect,
+        });
 
-        if (
-          !voiceResponse.data ||
-          !voiceResponse.data.data ||
-          !voiceResponse.data.data.voiceSource
-        ) {
-          throw new Error(
-            "Failed to generate voiceover. API returned invalid response."
-          );
+        if (!voiceResponse.voiceSource) {
+          next(new Error("Failed to generate voiceover correctly"));
         }
 
-        const voiceoverUrl =
-          voiceResponse.data.data.voiceSource.secure_url || null;
+        const voiceoverUrl = voiceResponse.voiceSource.secure_url || null;
 
         console.log("Voiceover URL:", voiceoverUrl);
-
-        const splitText = (text) => {
-          const isArabic =
-            /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(
-              text
-            );
-
-          let sentences;
-
-          if (isArabic) {
-            sentences = text
-              .split(/([.؟!\u06D4]+)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                if (/^[.؟!\u06D4]+$/.test(current)) {
-                  if (result.length > 0) {
-                    result[result.length - 1] += current;
-                  } else {
-                    result.push(current);
-                  }
-                } else if (
-                  index + 1 >= array.length ||
-                  !/^[.؟!\u06D4]+$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                } else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          } else {
-            sentences = text
-              .split(/([.?!]+\s*)/)
-              .reduce((result, current, index, array) => {
-                if (!current.trim()) return result;
-
-                if (/[.?!]+\s*$/.test(current)) {
-                  result.push(current);
-                } else if (
-                  index + 1 < array.length &&
-                  /^[.?!]+\s*$/.test(array[index + 1])
-                ) {
-                  result.push(current);
-                } else {
-                  result.push(current);
-                }
-                return result;
-              }, []);
-          }
-
-          return sentences
-            .filter((sentence) => sentence.trim().length > 0)
-            .map((sentence) => sentence.trim());
-        };
 
         const sentences = splitText(script);
 
@@ -1746,13 +1194,21 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
           createdBy: req.user._id,
           title,
           videoSource: cloudUploadResult,
-          scriptId: scriptResponse.data.data.script._id,
+          scriptId,
           duration: durationInSeconds,
-          thumbnailUrl: thumbnailUrl,
+          thumbnailUrl,
           language,
           accentOrDialect,
-          voiceId: voiceResponse.data.data.voice._id,
+          voiceId: voiceResponse.voice._id,
         });
+
+        if (!video) {
+          return next(
+            new Error("An error saving the video into the database", {
+              cause: 409,
+            })
+          );
+        }
 
         console.log("Video data saved in the database!");
 

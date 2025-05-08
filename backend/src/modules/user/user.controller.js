@@ -92,7 +92,7 @@ router.get(
   userService.getUserProfile
 );
 router.post(
-  "/redeem-credits",
+  "/purchase-credits",
   authentication(),
   userService.purchaseCredits
 );

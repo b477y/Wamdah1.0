@@ -12,10 +12,12 @@ const VoiceSchema = new mongoose.Schema(
     voiceoverActorId: { type: String, required: true },
     language: {
       type: String,
+      lowercase: true,
       enum: Object.keys(Languages),
     },
     accentOrDialect: {
       type: String,
+      lowercase: true,
       enum: Object.keys(AccentsAndDialects),
     },
   },
