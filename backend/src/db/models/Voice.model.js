@@ -9,7 +9,7 @@ const VoiceSchema = new mongoose.Schema(
       secure_url: { type: String, required: true },
       public_id: { type: String, required: true },
     },
-    voiceoverActorId: { type: String, required: true },
+    voiceoverActorId: { type: mongoose.Types.ObjectId, ref: "Script", required: true },
     language: {
       type: String,
       lowercase: true,

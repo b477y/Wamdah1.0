@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authentication from "../../middlewares/authentication.middleware.js";
 import * as videoService from "./services/video.service.js";
+import checkCredits from "../../middlewares/checkCredits.middleware.js";
 
 const router = Router();
 
@@ -8,6 +9,7 @@ const router = Router();
 router.post(
   "/generate",
   authentication(),
+  checkCredits,
   videoService.generateVideo
 );
 
@@ -15,6 +17,7 @@ router.post(
 router.post(
   "/generate-avatar",
   authentication(),
+  checkCredits,
   videoService.generateAiAvatarVideo
 );
 
@@ -22,6 +25,7 @@ router.post(
 router.post(
   "/generate-ad",
   authentication(),
+  checkCredits,
   videoService.generateAdVideo
 );
 

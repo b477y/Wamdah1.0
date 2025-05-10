@@ -25,11 +25,12 @@ export const generateScriptUsingGimini = async ({
     ${typePrompt}
     The content for this video is: ${userPrompt}
     Please structure the script as follows:
-    - Break the content into short, easy-to-read sentences that fit within 3 seconds when spoken.
+    - Output should be plain text with sentences separated by a ".".
+    - Break the content into short, easy-to-read sentences that fit within 1 second when spoken.
+    - Sentences should consists of 3 words only not less than 3 words.
     - Use natural, engaging language, as if speaking directly to the audience.
     - Avoid long sentences, complex phrases, or unnecessary punctuation.
     - Ensure the script flows naturally and smoothly, without line breaks or section titles.
-    - Output should be plain text with sentences separated by a ".".
     - End with a clear and actionable sentence that encourages engagement.
     - All the script should be in ${language}.
   `;
@@ -76,7 +77,7 @@ export const generateScriptUsingGimini = async ({
   if (!script) {
     throw new Error("An error occured while saving the script into the database");
   }
-  await searchImages(title);
+  // await searchImages(title);
 
   return { script, formattedScript: generatedScript, title };
 };

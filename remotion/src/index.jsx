@@ -1,5 +1,4 @@
 import { registerRoot } from "remotion";
-import React from "react";
 import { Composition } from "remotion";
 import MyVideo from "./components/MyVideo.jsx";
 
@@ -14,7 +13,7 @@ const RemotionRoot = () => {
         <Composition
             id="MyVideo"
             component={MyVideo}
-            durationInFrames={1800} // Dynamically calculated
+            durationInFrames={7200} // Dynamically calculated
             fps={30}
             width={1080}
             height={1920}

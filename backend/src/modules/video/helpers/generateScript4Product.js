@@ -54,7 +54,7 @@ Task:
     throw new Error("An error occured while saving the script into the database");
   }
 
-  await searchImages(keyword);
+  // await searchImages(keyword);
 
   return { script: generatedScript, scriptId: script._id, title: keyword };
 };

@@ -22,6 +22,7 @@ Rules:
 - End with a strong call to action like “Get yours now!” or “Try it today!”.
 - All content should be written in ${language}.
 - Ensure the script contains at least 12-24 short sentences for a ~30s - ~60s video.
+- The sentece must include in maximum of 3 words not more than 3 words please.
 
 Product Info:
 ${scrapedText}
@@ -30,12 +31,6 @@ ${scrapedText}
     const result = await model.generateContent(prompt);
     const response = await result.response;
     let text = response.text().trim();
-
-    // 🧼 Optional cleanup: remove repeated punctuation (". .", "! .", etc.)
-    text = text.replace(/(\.|\!)[\s]*\.(?=\s|$)/g, "$1"); // replaces ". ." and "! ." with "."
-    text = text.replace(/\.{2,}/g, "."); // replaces any ".." with "."
-    text = text.replace(/!{2,}/g, "!"); // replaces "!!" with "!"
-    text = text.replace(/\s{2,}/g, " "); // collapse multiple spaces
 
     return text;
   } catch (error) {

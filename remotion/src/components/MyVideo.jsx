@@ -57,43 +57,43 @@ const loadFont = (fontFamily) => {
 };
 
 const MyVideo = ({
-  sentences = ["No text provided"],
+  sentences = [],
   fontSize = 80,
   color = "black",
   fontFamily = "Arial",
   voiceoverUrl,
   fileName,
+  framesPerSentence
 }) => {
   const fontLoader = loadFont(fontFamily);
   const { fontFamily: selectedFont } = fontLoader
     ? fontLoader()
     : { fontFamily: "Arial" };
 
-  const sentenceDuration = 60;
-  const totalDuration = sentences.length * sentenceDuration;
+  const totalDuration = sentences.length * framesPerSentence;
 
-  const backgroundImagePaths = [
-    "image1.jpg",
-    "image2.jpg",
-    "image3.jpg",
-    "image4.jpg",
-    "image5.jpg",
-    "image6.jpg",
-    "image7.jpg",
-    "image8.jpg",
-    "image9.jpg",
-    "image10.jpg",
-    "image11.jpg",
-    "image12.jpg",
-    "image13.jpg",
-    "image14.jpg",
-    "image15.jpg",
-    "image16.jpg",
-    "image17.jpg",
-    "image18.jpg",
-    "image19.jpg",
-    "image20.jpg",
-  ]; 
+  // const backgroundImagePaths = [
+  //   "image1.jpg",
+  //   "image2.jpg",
+  //   "image3.jpg",
+  //   "image4.jpg",
+  //   "image5.jpg",
+  //   "image6.jpg",
+  //   "image7.jpg",
+  //   "image8.jpg",
+  //   "image9.jpg",
+  //   "image10.jpg",
+  //   "image11.jpg",
+  //   "image12.jpg",
+  //   "image13.jpg",
+  //   "image14.jpg",
+  //   "image15.jpg",
+  //   "image16.jpg",
+  //   "image17.jpg",
+  //   "image18.jpg",
+  //   "image19.jpg",
+  //   "image20.jpg",
+  // ]; 
 
   const aiAvatarPath = fileName ? staticFile(`videos/${fileName}`) : null;
   return (
@@ -117,12 +117,12 @@ const MyVideo = ({
         />
       )}
 
-      {/* Render Background Images */}
+      {/* Render Background Images
       {backgroundImagePaths.map((imageName, index) => (
         <Sequence
           key={`bg-${index}`}
-          from={index * sentenceDuration}
-          durationInFrames={sentenceDuration}
+          from={index * framesPerSentence}
+          durationInFrames={framesPerSentence}
         >
           <Img
             src={staticFile(`images/${imageName}`)}
@@ -135,16 +135,17 @@ const MyVideo = ({
             }}
           />
         </Sequence>
-      ))}
+      ))} */}
+
 
       {/* Render each sentence one by one */}
-      {sentences.map((sentence, index) => {
+      {sentences.length && sentences.map((sentence, index) => {
         const isArabic = isArabicText(sentence);
         return (
           <Sequence
             key={index}
-            from={index * sentenceDuration}
-            durationInFrames={sentenceDuration}
+            from={index * framesPerSentence}
+            durationInFrames={framesPerSentence}
           >
             <div
               style={{

@@ -7,6 +7,7 @@ import { cloud } from "../../../utils/multer/cloudinary.multer.js";
 import { fileURLToPath } from "url";
 import path from "path";
 import VoiceModel from "../../../db/models/Voice.model.js";
+import VoiceActorModel from "../../../db/models/VoiceActor.model.js";
 
 export const createVoiceOver = async ({
   req,
@@ -64,12 +65,14 @@ export const createVoiceOver = async ({
     });
 
     fs.unlinkSync(outputFilePath);
-    
+
+    const { _id } = await VoiceActorModel.findOne({ referenceId: reference_id })
+
     const voice = await VoiceModel.create({
       createdBy: req.user._id,
       voiceSource: cloudUploadResult,
       scriptId,
-      voiceoverActorId: reference_id,
+      voiceoverActorId: _id,
       language,
       accentOrDialect,
     });
