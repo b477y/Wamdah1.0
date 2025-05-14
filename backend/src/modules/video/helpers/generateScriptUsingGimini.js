@@ -77,7 +77,7 @@ export const generateScriptUsingGimini = async ({
   if (!script) {
     throw new Error("An error occured while saving the script into the database");
   }
-  // await searchImages(title);
+  await searchImages(title);
 
   return { script, formattedScript: generatedScript, title };
 };
