@@ -6,6 +6,7 @@ import asyncHandler from "../../../utils/response/error.response.js";
 import successResponse from "../../../utils/response/success.response.js";
 import { cloud } from "../../../utils/multer/cloudinary.multer.js";
 import { exec } from "node:child_process";
+import AiAvatarModel from "../../../db/models/AiAvatar.model.js";
 
 // Load API key from environment variables
 const apiKey = process.env.HEYGEN_API_KEY;
@@ -18,94 +19,35 @@ const getVideoStatusUrl = "https://api.heygen.com/v1/video_status.get";
 // violante
 // imelda
 
-const avatarMap = {
-  brandon: {
-    name: "Brandon",
-    avatar_id: "Brandon_expressive_public",
-    voice_id: "3787b4ab93174952a3ad649209f1029a",
-    avatar_image:
-      "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192366/brandon_xhlyat.png",
-  },
-  diran: {
-    name: "Diran",
-    avatar_id: "Diran_Macbook_Casual_Front_public",
-    voice_id: "1bd8ba4005004e6abfa46fad9ace1091",
-    avatar_image:
-      "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192360/diran_omhr8x.png",
-  },
-  justo: {
-    name: "Justo",
-    avatar_id: "Justo_EmployeeTraining_Front_public",
-    voice_id: "49d1050d0a764f1394587a6d2409ea80",
-    avatar_image:
-      "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192366/justo_kvanft.png",
-  },
-  violante: {
-    name: "Violante",
-    avatar_id: "Violante_Brown_Suit_Front_public",
-    voice_id: "1edc5e7338eb4e37b26dc8eb3f9b7e9c",
-    avatar_image:
-      "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192362/violante_drbaio.png",
-  },
-  imelda: {
-    name: "Imelda",
-    avatar_id: "Imelda_Casual_Front_public",
-    voice_id: "3193b827155a485c9ba08adc05a4a509",
-    avatar_image:
-      "https://res.cloudinary.com/dlt1zyqli/image/upload/v1746192362/imelda_tvlgma.png",
-  },
-};
-
 export const retrieveAiAvatars = asyncHandler(async (req, res, next) => {
-  const avatars = Object.values(avatarMap).map((avatar) => {
-    return {
-      name: avatar.name,
-      avatar_id: avatar.avatar_id,
-      avatar_image: avatar.avatar_image,
-    };
-  });
-
+  const avatars = await AiAvatarModel.find({})
   return successResponse({
-    res,
-    status: 200,
-    message: "AI Avatars retrieved successfully",
-    data: avatars,
+    res, status: 200, message: "AI Avatars retrieved successfully", data: avatars,
   });
 });
 
 export const generateAiAvatarWithCroma = async ({ req, speaker, script }) => {
-
   if (!speaker || !script) {
     throw new Error("Missing required fields: speaker and script")
   }
-
-  const avatarData = avatarMap[speaker.toLowerCase()];
-  if (!avatarData) {
-    throw new Error("Invalid speaker selected.")
-  }
-
+  const avatarData = await AiAvatarModel.findOne({ avatarName: speaker })
+  if (!avatarData) { throw new Error("Invalid speaker selected.") }
   const requestBody = {
     video_inputs: [
       {
         character: {
-          type: "avatar",
-          avatar_id: avatarData.avatar_id,
-          avatar_style: "normal",
+          type: "avatar", avatar_id: avatarData.avatarid, avatar_style: "normal",
         },
         voice: {
-          type: "text",
-          input_text: script,
-          voice_id: avatarData.voice_id,
+          type: "text", input_text: script, voice_id: avatarData.voiceId,
         },
         background: {
-          type: "color",
-          value: "#00FF00",
+          type: "color", value: "#00FF00",
         },
       },
     ],
     dimension: {
-      width: 720,
-      height: 1280,
+      width: 720, height: 1280,
     },
   };
 
@@ -135,9 +77,7 @@ export const generateAiAvatarWithCroma = async ({ req, speaker, script }) => {
       const statusRes = await axios.get(
         `${getVideoStatusUrl}?video_id=${videoId}`,
         {
-          headers: {
-            "X-Api-Key": apiKey,
-          },
+          headers: { "X-Api-Key": apiKey },
         }
       );
 
@@ -163,6 +103,7 @@ export const generateAiAvatarWithCroma = async ({ req, speaker, script }) => {
       __dirname,
       "../../../../../remotion/public/videos"
     );
+
     if (!fs.existsSync(videosDir)) {
       fs.mkdirSync(videosDir, { recursive: true });
     }

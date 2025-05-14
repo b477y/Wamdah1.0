@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const CreditPurchaseSchema = new mongoose.Schema(
+const CreditTransactionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Types.ObjectId, ref: "User", required: true },
     credits: { type: Number, required: true },
@@ -16,7 +16,7 @@ const CreditPurchaseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const CreditPurchaseModel =
-  mongoose.models.CreditPurchase ||
-  mongoose.model("CreditPurchase", CreditPurchaseSchema);
-export default CreditPurchaseModel;
+const CreditTransactionModel =
+  mongoose.models.CreditTransaction ||
+  mongoose.model("CreditTransaction", CreditTransactionSchema);
+export default CreditTransactionModel;

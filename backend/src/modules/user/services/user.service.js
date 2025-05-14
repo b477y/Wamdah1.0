@@ -1,10 +1,10 @@
 import VideoModel from "../../../db/models/Video.model.js";
-import CreditPurchaseModel from "../../../db/models/CreditPurchase.model.js";
 import asyncHandler from "../../../utils/response/error.response.js";
 import successResponse from "../../../utils/response/success.response.js";
 import { cloud } from "../../../utils/multer/cloudinary.multer.js";
 import UserModel from "../../../db/models/User.model.js";
 import { emailEvent } from "../../../utils/events/email.event.js";
+import CreditTransactionModel from "../../../db/models/CreditTransaction.model.js";
 
 export const getUserVideos = asyncHandler(async (req, res, next) => {
   const videos = await VideoModel.find({ createdBy: req.user._id }).sort({ createdAt: -1 });
@@ -57,11 +57,12 @@ export const getAiCredits = asyncHandler(async (req, res, next) => {
 });
 
 export const getUserDashboard = asyncHandler(async (req, res, next) => {
+  const { name } = await UserModel.findById(req.user._id).select("name");
   const videos = await VideoModel.find({ createdBy: req.user._id }).sort({ createdAt: -1 }).limit(3);
   const aiCredits = await UserModel.findById(req.user._id).select("aiCredits");
   const videosCount = await VideoModel.find({ createdBy: req.user._id }).countDocuments();
   successResponse({
-    res, status: 200, message: "User's data retrieved successfully", data: { aiCredits, videosCount, videos },
+    res, status: 200, message: "User's data retrieved successfully", data: { name, aiCredits, videosCount, videos },
   });
 });
 
@@ -95,7 +96,7 @@ export const purchaseCredits = asyncHandler(async (req, res, next) => {
   const egpAmount = credits * 2;
   const user = await UserModel.findByIdAndUpdate(req.user._id, { $inc: { aiCredits: credits } }, { new: true });
   const paymentReference = `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-  await CreditPurchaseModel.create({ userId: req.user._id, credits, egpAmount, paymentReference, status: "Success" })
+  await CreditTransactionModel.create({ userId: req.user._id, credits, egpAmount, paymentReference, status: "Success" })
   emailEvent.emit("sendPurchaseConfirmation", { email: user.email, name: user.name, credits });
   return successResponse({ res, status: 200, message: "AI credits added successfully" });
 });

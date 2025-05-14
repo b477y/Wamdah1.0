@@ -5,6 +5,7 @@ const AiAvatarSchema = new mongoose.Schema(
     avatarName: { type: String, required: true },
     avatarId: { type: String, required: true },
     avatarImage: { type: String, required: true },
+    voiceId: { type: String, required: true },
   },
   { timestamps: true }
 );

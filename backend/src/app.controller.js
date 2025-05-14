@@ -13,6 +13,7 @@ import { fileURLToPath } from "url";
 import passport from "passport";
 import cookieParser from "cookie-parser";
 import "./passport.js";
+import morgan from 'morgan'
 
 import session from "express-session";
 
@@ -31,6 +32,7 @@ const bootstrap = (app, express) => {
 
   app.use(express.json());
   app.use(cors({ origin: "*" }));
+  app.use(morgan('dev'));
   app.use(cookieParser());
   app.use(passport.initialize()); // Initialize passport
   // Serve the videos directory
