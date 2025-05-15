@@ -7,8 +7,8 @@ import {
   generateTokens,
   decodeToken,
 } from "../../../utils/security/token.security.js";
-import { google } from "googleapis";
 import { emailEvent } from "../../../utils/events/email.event.js";
+import passport from "../../../utils/passport/passport.js";
 
 export const signUp = asyncHandler(async (req, res, next) => {
   const { name, email, password } = req.body;
@@ -76,58 +76,74 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
 
   return successResponse({ res, status: 200, message: "Tokens refreshed successfully", data: { tokens } });
 });
-// export const oauth = asyncHandler(async (req, res, next) => {
-//   const { code } = req.query;
 
-//   if (!code) {
-//     return next(new Error("Authorization code is required", { cause: 400 }));
-//   }
+export const initiateGoogleOAuth = [
+  asyncHandler(async (req, res, next) => {
+    const platformAccessToken = req.query.platform_access_token;
+    if (!platformAccessToken) {
+      return next(new Error("Platform access token is required", { cause: 400 }));
+    }
 
-//   const oauth2Client = new google.auth.OAuth2(
-//     process.env.CLIENT_ID,
-//     process.env.CLIENT_SECRET,
-//     process.env.REDIRECT_URI
-//   );
+    try {
+      const decoded = await decodeToken({
+        authorization: platformAccessToken,
+        tokenType: TokenType.ACCESS,
+      });
 
-//   try {
-//     const { tokens } = await oauth2Client.getToken(code);
-//     oauth2Client.setCredentials(tokens);
+      if (!decoded?._id) {
+        return next(new Error("Invalid platform access token", { cause: 401 }));
+      }
 
-//     const oauth2 = google.oauth2({ auth: oauth2Client, version: "v2" });
-//     const { data: userInfo } = await oauth2.userinfo.get();
-//     const { email } = userInfo;
+      req.platformUserId = decoded._id;
+      next();
+    } catch (error) {
+      return next(new Error("Invalid platform access token", { cause: 401 }));
+    }
+  }),
 
-//     if (!email) {
-//       return next(new Error("Google account doesn't have an email", { cause: 400 }));
-//     }
+  (req, res, next) => {
+    passport.authenticate('google', {
+      scope: [
+        'profile',
+        'email',
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube',
+      ],
+      accessType: 'offline',
+      prompt: 'consent',
+      state: req.platformUserId,
+    })(req, res, next);
+  }
+];
 
-//     let user = await UserModel.findOne({ email, deletedAt: { $exists: false } });
+export const handleGoogleOAuthCallback = asyncHandler(async (req, res, next) => {
+  passport.authenticate('google', { session: false }, async (err, googleUser, info) => {
+    try {
+      if (err || !googleUser) {
+        console.error('Google OAuth error:', err || 'No user returned');
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
+      }
 
-//     if (!user) {
-//       user = await UserModel.create({
-//         email,
-//         googleTokens: tokens,
-//       });
-//     } else {
-//       user.googleTokens = tokens;
-//       await user.save();
-//     }
+      const userId = req.query.state;
+      if (!userId) {
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=invalid_state`);
+      }
 
-//     const accessTokenSK = process.env.ACCESS_TOKEN_SK;
-//     const refreshTokenSK = process.env.REFRESH_TOKEN_SK;
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=user_not_found`);
+      }
 
-//     const platformTokens = await generateTokens({
-//       payload: { _id: user._id, role: user.role },
-//       accessTokenSK,
-//       refreshTokenSK,
-//       tokenType: [TokenType.ACCESS, TokenType.REFRESH],
-//     });
+      user.googleTokens = {
+        access_token: googleUser.accessToken,
+        refresh_token: googleUser.refreshToken,
+      };
+      await user.save();
 
-//     // 👇 Redirect to your frontend with tokens in query params (use a secure method in production)
-//     const redirectUrl = `${process.env.FRONTEND_REDIRECT_URL}?accessToken=${platformTokens.accessToken}&refreshToken=${platformTokens.refreshToken}`;
-//     return res.redirect(redirectUrl);
-
-//   } catch (err) {
-//     return next(new Error("Failed to authenticate with Google", { cause: 500 }));
-//   }
-// });
+      res.redirect(`${process.env.FRONTEND_URL}/dashboard?google_auth=success`);
+    } catch (error) {
+      console.error('Google OAuth callback error:', error);
+      res.redirect(`${process.env.FRONTEND_URL}/login?error=server_error`);
+    }
+  })(req, res, next);
+});

@@ -7,34 +7,29 @@ import scriptController from "./modules/script/script.controller.js";
 import authController from "./modules/auth/auth.controller.js";
 import aiAvatarController from "./modules/aiAvatar/aiAvatar.controller.js";
 import userController from "./modules/user/user.controller.js";
-import testingController from "./modules/testing/testing.controller.js";
 import path from "node:path";
 import { fileURLToPath } from "url";
-import passport from "passport";
 import cookieParser from "cookie-parser";
-import "./passport.js";
 import morgan from 'morgan'
-
 import session from "express-session";
+import passport from "./utils/passport/passport.js";
 
 const bootstrap = (app, express) => {
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || "your-secret-key",
-      resave: false,
-      saveUninitialized: true,
-      cookie: {
-        secure: false, // use true in production with HTTPS
-        maxAge: 24 * 60 * 60 * 1000, // 1 day
-      },
-    })
-  );
+
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'mySuperSecretKey123',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false }
+  }));
+
+  app.use(passport.initialize());
+  app.use(passport.session());
 
   app.use(express.json());
   app.use(cors({ origin: "*" }));
   app.use(morgan('dev'));
   app.use(cookieParser());
-  app.use(passport.initialize()); // Initialize passport
   // Serve the videos directory
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -46,7 +41,6 @@ const bootstrap = (app, express) => {
   app.use("/api/scripts", scriptController);
   app.use("/api/aiAvatar", aiAvatarController);
   app.use("/api/user", userController);
-  app.use("/api/testing", testingController);
 
   app.get("", (req, res, next) => {
     return res.status(200).json({ message: `${process.env.APP_NAME}` });

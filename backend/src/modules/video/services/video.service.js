@@ -15,6 +15,7 @@ import VoiceActorModel from "../../../db/models/VoiceActor.model.js";
 import { getFontLoader } from "../helpers/getfontLoader.js";
 import calculateFrames from "../helpers/calculateFrames.js";
 import uploadToCloud from "../helpers/uploadToCloud.js";
+import { generateAndUploadThumbnail } from "../helpers/generateAndUploadThumbnail.js.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,15 +107,19 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
       const cloudUploadResult = await uploadToCloud({ req, title, outputLocation })
       const durationInSeconds = Math.round(cloudUploadResult.duration);
 
-      const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
-        resource_type: "video",
-        transformation: [
-          { width: 500, height: 281, crop: "fill" },
-          { start_offset: "15" },
-        ],
+      const imagePath = path.resolve(
+        __dirname,
+        "../../../../../remotion/public/images/image1.jpg"
+      );
+
+      const thumbnailResult = await generateAndUploadThumbnail({
+        req,
+        imagePath,
+        title
       });
 
-      if (!thumbnailUrl) {
+
+      if (!thumbnailResult) {
         next(new Error("An error occured while getting the thumbnail url"));
       }
 
@@ -124,7 +129,7 @@ export const generateVideo = asyncHandler(async (req, res, next) => {
         videoSource: cloudUploadResult,
         scriptId,
         duration: durationInSeconds,
-        thumbnailUrl,
+        thumbnailUrl: thumbnailResult.secure_url,
         language,
         accentOrDialect,
         voiceId: voiceResponse.voice._id,
@@ -248,19 +253,27 @@ export const generateAiAvatarVideo = asyncHandler(async (req, res, next) => {
 
       console.log("Video uploading completed!");
 
-      const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
-        resource_type: "video",
-        transformation: [
-          { width: 500, height: 281, crop: "fill" },
-          { start_offset: "15" },
-        ],
+      const imagePath = path.resolve(
+        __dirname,
+        "../../../../../remotion/public/images/image1.jpg"
+      );
+
+      const thumbnailResult = await generateAndUploadThumbnail({
+        req,
+        imagePath,
+        title
       });
+
+
+      if (!thumbnailResult) {
+        next(new Error("An error occured while getting the thumbnail url"));
+      }
 
       const video = await VideoModel.create({
         createdBy: req.user._id,
         title,
         videoSource: cloudUploadResult,
-        thumbnailUrl,
+        thumbnailUrl: thumbnailResult.secure_url,
         scriptId,
         language,
         accentOrDialect,
@@ -399,13 +412,21 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
 
       console.log("Video uploading completed!");
 
-      const thumbnailUrl = cloud.url(`${cloudUploadResult.public_id}.jpg`, {
-        resource_type: "video",
-        transformation: [
-          { width: 500, height: 281, crop: "fill" },
-          { start_offset: "15" },
-        ],
+      const imagePath = path.resolve(
+        __dirname,
+        "../../../../../remotion/public/images/image1.jpg"
+      );
+
+      const thumbnailResult = await generateAndUploadThumbnail({
+        req,
+        imagePath,
+        title
       });
+
+
+      if (!thumbnailResult) {
+        next(new Error("An error occured while getting the thumbnail url"));
+      }
 
       const video = await VideoModel.create({
         createdBy: req.user._id,
@@ -413,7 +434,7 @@ export const generateAdVideo = asyncHandler(async (req, res, next) => {
         videoSource: cloudUploadResult,
         scriptId,
         duration: durationInSeconds,
-        thumbnailUrl,
+        thumbnailUrl: thumbnailResult.secure_url,
         language,
         accentOrDialect,
         voiceId: voiceResponse.voice._id,

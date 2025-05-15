@@ -61,7 +61,7 @@ export const decodeToken = async ({ authorization, tokenType } = {}) => {
     throw new Error("Invalid or expired token", { cause: 401 });
   }
 
-  if (!decoded?._id || !decoded?.role) {
+  if (!decoded?._id || !decoded?.role ) {
     throw new Error("Invalid token payload", { cause: 401 });
   }
 

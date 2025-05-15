@@ -17,11 +17,8 @@ const UserSchema = new mongoose.Schema(
       default: UserRole.USER,
     },
     googleTokens: {
-      access_token: String,
-      refresh_token: String,
-      scope: String,
-      token_type: String,
-      expiry_date: Number,
+      access_token: { type: String },
+      refresh_token: { type: String },
     },
     aiCredits: { type: Number, default: 25 },
     deletedAt: Date,
@@ -34,6 +31,14 @@ UserSchema.pre("save", async function (next) {
     this.password = await generateHash({ plaintext: this.password });
   }
 
+  next();
+});
+
+UserSchema.pre('findOneAndUpdate', async function (next) {
+  const update = this.getUpdate();
+  if (update.password) {
+    update.password = await generateHash({ plaintext: update.password });
+  }
   next();
 });
 
