@@ -22,7 +22,7 @@ const authentication = () => {
         return next(new Error("Unauthorized access", { cause: 401 }));
       }
 
-      req.user = { _id: user._id, role: user.role, googleTokens: user.googleTokens };
+      req.user = { _id: user._id, role: user.role };
       next();
     } catch (error) {
       return next(new Error("Invalid or expired token", { cause: 401 }));
