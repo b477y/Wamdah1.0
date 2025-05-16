@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { TokenType } from "../enum/enums.js";
-import UserModel from "../../db/models/User.model.js"
+import UserModel from "../../db/models/User.model.js";
 
 export const generateTokens = async ({
   payload,
@@ -43,7 +43,6 @@ export const generateTokens = async ({
 export const verifyToken = ({ token, secretKey } = {}) => {
   return jwt.verify(token, secretKey);
 };
-
 export const decodeToken = async ({ authorization, tokenType } = {}) => {
   if (typeof authorization !== "string" || !authorization.trim()) {
     throw new Error("Invalid authorization format", { cause: 401 });
@@ -58,10 +57,20 @@ export const decodeToken = async ({ authorization, tokenType } = {}) => {
   try {
     decoded = verifyToken({ token: authorization, secretKey });
   } catch (err) {
-    throw new Error("Invalid or expired token", { cause: 401 });
+    console.error("JWT ERROR:", err.name, err.message); // Log the real error
+
+    if (err.name === "TokenExpiredError") {
+      throw new Error("Token has expired", { cause: 401 });
+    }
+
+    if (err.name === "JsonWebTokenError") {
+      throw new Error("Invalid token signature", { cause: 401 });
+    }
+
+    throw new Error("Token verification failed", { cause: 401 });
   }
 
-  if (!decoded?._id || !decoded?.role ) {
+  if (!decoded?._id || !decoded?.role) {
     throw new Error("Invalid token payload", { cause: 401 });
   }
 

@@ -23,7 +23,7 @@ const authentication = () => {
       }
 
       req.user = { _id: user._id, role: user.role };
-      next();
+      return next();
     } catch (error) {
       return next(new Error("Invalid or expired token", { cause: 401 }));
     }
