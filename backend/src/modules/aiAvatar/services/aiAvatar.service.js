@@ -36,7 +36,7 @@ export const generateAiAvatarWithCroma = async ({ req, speaker, script }) => {
     video_inputs: [
       {
         character: {
-          type: "avatar", avatar_id: avatarData.avatarid, avatar_style: "normal",
+          type: "avatar", avatar_id: avatarData.avatarId, avatar_style: "normal",
         },
         voice: {
           type: "text", input_text: script, voice_id: avatarData.voiceId,
