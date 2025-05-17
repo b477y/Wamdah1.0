@@ -103,7 +103,7 @@ const searchImages = async (query) => {
     }
 
     console.log(`✅ Successfully downloaded ${successfulDownloads} image(s).`);
-    return successfulDownloads;
+    return Array.from(downloadedUrls);
   } catch (error) {
     console.error(
       "❌ Error fetching or downloading images:",
